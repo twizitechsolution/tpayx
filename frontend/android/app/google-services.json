@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "455907277585",
+    "project_id": "airwallex-payments-e0982",
+    "storage_bucket": "airwallex-payments-e0982.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:455907277585:android:c187aa5d552a2a3ab1eab0",
+        "android_client_info": {
+          "package_name": "com.airwallex.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD5-m2cWeuQ08QBy99YdwwGR3A5rgMH_FM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

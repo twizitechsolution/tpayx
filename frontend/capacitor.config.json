@@ -1,0 +1,13 @@
+{
+  "appId": "com.tpayx.app",
+  "appName": "TpayX",
+  "webDir": "dist",
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}

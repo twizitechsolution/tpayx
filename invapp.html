@@ -1,0 +1,2140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TpayX - Fast. Secure. Simple.</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+  body { background: #eef1f5; }
+  .phone-frame {
+    width: 390px;
+    height: 844px;
+    background: #fff;
+    border-radius: 40px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    overflow: hidden;
+    position: relative;
+    margin: 20px auto;
+  }
+  .screen { display: none; height: 100%; flex-direction: column; position: relative; }
+  .screen.active { display: flex; }
+  .scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; }
+  .scroll-area::-webkit-scrollbar { display: none; }
+  .status-bar {
+    height: 44px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 20px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #000;
+    background: transparent;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+  }
+  .nav-bar {
+    height: 70px;
+    background: #fff;
+    border-top: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding-bottom: 10px;
+  }
+  .nav-item { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; color: #999; font-size: 10px; }
+  .nav-item.active { color: #2563eb; }
+  .nav-item i { font-size: 20px; }
+  .gradient-brand { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); }
+  .gradient-green { background: linear-gradient(135deg, #00c853 0%, #009624 100%); }
+  .gradient-blue { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); }
+  .gradient-purple { background: linear-gradient(135deg, #9c27b0 0%, #4a148c 100%); }
+  .card-shadow { box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
+  .toast {
+    position: fixed;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.85);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+  .modal-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+  .input-field {
+    width: 100%;
+    background: #f5f7fa;
+    border: 1px solid #e0e6ed;
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+  }
+  .input-field:focus { border-color: #2563eb; background: #fff; }
+  .btn-primary {
+    background: #2563eb;
+    color: white;
+    width: 100%;
+    padding: 16px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 16px;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+  }
+  .step-line { height: 2px; background: #e0e6ed; flex: 1; margin: 0 4px; }
+  .step-line.active { background: #2563eb; }
+  .toggle-switch { width: 36px; height: 20px; background: #e0e6ed; border-radius: 10px; position: relative; cursor: pointer; transition: 0.2s; }
+  .toggle-switch.active { background: #2563eb; }
+  .toggle-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  .toggle-switch.active::after { left: 18px; }
+  .splash-bg {
+    background-color: #0f172a;
+    background-image: radial-gradient(#1e3a8a 20%, transparent 20%), radial-gradient(#1e3a8a 20%, transparent 20%);
+    background-position: 0 0, 15px 15px;
+    background-size: 30px 30px;
+  }
+</style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+<div class="phone-frame">
+  <!-- Status Bar -->
+  <div class="status-bar">
+    <span>11:10</span>
+    <div class="flex items-center gap-1">
+      <i class="fas fa-signal text-xs"></i>
+      <i class="fas fa-wifi text-xs"></i>
+      <i class="fas fa-battery-three-quarters text-xs"></i>
+      <span class="text-xs">55%</span>
+    </div>
+  </div>
+
+  <!-- ============ SPLASH SCREEN ============ -->
+  <div class="screen active" id="screen-splash" style="background: #0f172a;">
+    <div class="flex flex-col items-center justify-center h-full splash-bg text-white">
+      <div class="relative w-32 h-32 flex items-center justify-center mb-8 bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl">
+        <span class="text-white text-5xl font-black tracking-tighter">A<span class="text-blue-500">W</span></span>
+      </div>
+      <h1 class="text-3xl font-bold tracking-wide text-white">TpayX</h1>
+      <p class="text-sm mt-2 text-gray-400">Fast. Secure. Simple.</p>
+      <div class="absolute bottom-10 flex flex-col items-center">
+        <div class="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LOGIN SCREEN (Dark Background) ============ -->
+  <div class="screen" id="screen-login" style="background: #0f172a;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-6 pt-8 pb-4 text-white">
+        <h1 class="text-2xl font-bold">Welcome Back!</h1>
+        <p class="text-sm text-gray-400 mt-1">Enter your registered account to sign in</p>
+      </div>
+
+      <div class="bg-white rounded-t-3xl mt-6 pt-6 px-6 pb-6 flex-1">
+        <div class="space-y-4 mt-4">
+          <div>
+            <label class="text-xs text-gray-500 font-medium">Mobile Number</label>
+            <div class="flex items-center gap-2 mt-1.5">
+              <div class="flex items-center gap-1 bg-gray-100 rounded-xl px-3 py-3 text-gray-700">
+                <span>🇮🇳</span>
+                <span class="text-sm">+91</span>
+              </div>
+              <input type="tel" id="login-mobile" class="input-field flex-1" placeholder="Type 10-digit number">
+            </div>
+          </div>
+
+          <div>
+            <div class="flex justify-between items-center">
+              <label class="text-xs text-gray-500 font-medium">Password</label>
+              <span class="text-xs text-blue-600 font-medium cursor-pointer" onclick="showToast('Please contact support to reset password')">Forgot password?</span>
+            </div>
+            <div class="relative mt-1.5">
+              <input type="password" id="login-password" class="input-field" placeholder="Enter password">
+              <i class="fas fa-eye-slash text-gray-400 absolute right-4 top-1/2 -translate-y-1/2"></i>
+            </div>
+          </div>
+
+          <div>
+            <label class="text-xs text-gray-500 font-medium">OTP</label>
+            <div class="flex items-center gap-2 mt-1.5">
+              <input type="text" id="login-otp" class="input-field flex-1" placeholder="Enter 6-digit OTP">
+              <button id="login-send-otp-btn" onclick="handleSendOtp('login')" class="bg-blue-50 text-blue-600 font-semibold px-4 py-3 rounded-xl text-sm whitespace-nowrap">Send OTP</button>
+            </div>
+          </div>
+
+          <button onclick="handleLoginSubmit()" class="btn-primary mt-6">SIGN IN</button>
+
+          <div class="text-center mt-6 text-sm text-gray-500">
+            Not registered yet? <span onclick="showScreen('screen-signup')" class="text-blue-600 font-semibold cursor-pointer">Sign Up Free</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SIGN UP SCREEN ============ -->
+  <div class="screen" id="screen-signup" style="background: #fff;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-6 pt-6 pb-4 flex items-center">
+        <i class="fas fa-arrow-left text-gray-700 mr-3 cursor-pointer" onclick="showScreen('screen-login')"></i>
+        <div>
+          <h1 class="text-xl font-bold text-gray-800">Sign Up Free</h1>
+          <p class="text-xs text-gray-500 mt-1">Create a new account</p>
+        </div>
+      </div>
+
+      <div class="px-6 mt-4 space-y-4 pb-6">
+        <div>
+          <label class="text-xs text-gray-500 font-medium">Mobile Number</label>
+          <div class="flex items-center gap-2 mt-1.5">
+            <div class="flex items-center gap-1 bg-gray-100 rounded-xl px-3 py-3 text-gray-700">
+              <span>🇮🇳</span>
+              <span class="text-sm">+91</span>
+            </div>
+            <input type="tel" id="signup-mobile" class="input-field flex-1" placeholder="Type 10-digit number">
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-500 font-medium">Password</label>
+          <input type="password" id="signup-password" class="input-field mt-1.5" placeholder="Enter password">
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-500 font-medium">Confirm Password</label>
+          <input type="password" id="signup-confirm-password" class="input-field mt-1.5" placeholder="Re-enter password">
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-500 font-medium">Invitation Code</label>
+          <input type="text" id="signup-invitation" class="input-field mt-1.5" placeholder="Enter invitation code">
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-500 font-medium">OTP</label>
+          <div class="flex items-center gap-2 mt-1.5">
+            <input type="text" id="signup-otp" class="input-field flex-1" placeholder="Enter 6-digit OTP">
+            <button id="signup-send-otp-btn" onclick="handleSendOtp('signup')" class="bg-blue-50 text-blue-600 font-semibold px-4 py-3 rounded-xl text-sm whitespace-nowrap">Send OTP</button>
+          </div>
+        </div>
+
+        <button id="signup-submit-btn" onclick="handleSignupSubmit()" class="btn-primary mt-4">Create Account</button>
+
+        <div class="text-center mt-4 text-sm text-gray-500">
+          Already have an account? <span onclick="showScreen('screen-login')" class="text-blue-600 font-semibold cursor-pointer">Sign In</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ HOME SCREEN ============ -->
+  <div class="screen" id="screen-home" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <!-- Top bar -->
+      <div class="px-5 py-3 flex items-center justify-between bg-white">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full gradient-brand flex items-center justify-center text-white font-bold text-sm border border-slate-700">T</div>
+          <div>
+            <div class="text-sm font-semibold text-gray-800">TpayX_User</div>
+            <div class="text-xs text-gray-400">UID: M118248</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-4">
+          <i class="fas fa-comment-alt text-gray-600" onclick="showScreen('screen-messages')"></i>
+          <i class="fas fa-headset text-gray-600" onclick="showScreen('screen-service')"></i>
+        </div>
+      </div>
+
+      <!-- Balance Card -->
+      <div class="mx-5 mt-3 rounded-2xl gradient-brand p-5 text-white relative overflow-hidden border border-slate-800">
+        <div class="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-blue-600 opacity-20"></div>
+        <div class="absolute -right-12 -bottom-12 w-40 h-40 rounded-full bg-blue-600 opacity-10"></div>
+        <div class="relative">
+          <div class="text-xs text-gray-400">Total Assets (₹)</div>
+          <div class="text-3xl font-bold mt-1">10,866.05</div>
+          <div class="flex gap-4 mt-4 text-xs">
+            <div>
+              <div class="text-gray-400">Today's Profit</div>
+              <div class="font-semibold mt-0.5 text-blue-400">₰ 0.00</div>
+            </div>
+            <div>
+              <div class="text-gray-400">Total Earnings</div>
+              <div class="font-semibold mt-0.5">₹ 10,751.28</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="grid grid-cols-4 gap-2">
+          <div class="flex flex-col items-center gap-1.5 cursor-pointer" onclick="showScreen('screen-newbie')">
+            <div class="w-12 h-12 rounded-xl bg-pink-100 flex items-center justify-center">
+              <i class="fas fa-gift text-pink-500"></i>
+            </div>
+            <span class="text-[10px] text-gray-600 text-center">Newbies Activity</span>
+          </div>
+          <div class="flex flex-col items-center gap-1.5 cursor-pointer" onclick="showModal('modal-invite')">
+            <div class="w-12 h-12 rounded-xl bg-yellow-100 flex items-center justify-center">
+              <i class="fas fa-user-plus text-yellow-500"></i>
+            </div>
+            <span class="text-[10px] text-gray-600 text-center">Invitation Rewards</span>
+          </div>
+          <div class="flex flex-col items-center gap-1.5 cursor-pointer" onclick="showScreen('screen-daily')">
+            <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center">
+              <i class="fas fa-calendar-check text-green-500"></i>
+            </div>
+            <span class="text-[10px] text-gray-600 text-center">Daily Bonus</span>
+          </div>
+          <div class="flex flex-col items-center gap-1.5 cursor-pointer">
+            <div class="w-12 h-12 rounded-xl bg-blue-100 flex items-center justify-center">
+              <i class="fas fa-users text-blue-500"></i>
+            </div>
+            <span class="text-[10px] text-gray-600 text-center">Join Agent</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Buy Rupee -->
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg gradient-green flex items-center justify-center">
+              <span class="text-white text-xs font-bold">₹</span>
+            </div>
+            <span class="font-semibold text-gray-800">Buy Rupee</span>
+          </div>
+          <span class="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full font-medium">2.5% + 6 reward</span>
+        </div>
+        <div class="bg-gray-50 rounded-xl p-3 flex items-center justify-between">
+          <div>
+            <div class="text-xs text-gray-500">Example</div>
+            <div class="text-sm text-gray-700 mt-1">Pay <span class="font-semibold">₹10000</span> → Receive <span class="font-semibold text-green-600">₹10256</span></div>
+          </div>
+          <button onclick="showScreen('screen-buy')" class="gradient-green text-white px-4 py-2 rounded-full text-xs font-semibold">Buy</button>
+        </div>
+      </div>
+
+      <!-- Buy USDT -->
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-lg gradient-brand flex items-center justify-center">
+              <span class="text-blue-500 text-xs font-bold">₿</span>
+            </div>
+            <span class="font-semibold text-gray-800">Buy USDT</span>
+          </div>
+          <span class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-medium">6.5% per order profit</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div class="bg-gray-50 rounded-xl p-3">
+            <div class="text-xs text-gray-500">Binance Price</div>
+            <div class="text-base font-semibold text-gray-800 mt-1">100.00</div>
+          </div>
+          <div class="bg-blue-50 rounded-xl p-3">
+            <div class="text-xs text-blue-500">Platform Price</div>
+            <div class="text-base font-semibold text-blue-600 mt-1">106.50</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Learn & Earn -->
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-3">
+          <span class="font-semibold text-gray-800">Learn & Earn</span>
+          <i class="fas fa-chevron-right text-gray-400 text-xs" onclick="showScreen('screen-learn')"></i>
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center gap-3 p-2.5 bg-gray-50 rounded-xl cursor-pointer" onclick="showScreen('screen-learn')">
+            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+              <i class="fas fa-user-tie text-white text-sm"></i>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm font-medium text-gray-800">Limited-time agent recruitment</div>
+              <div class="text-xs text-gray-400 mt-0.5">Earn up to 3-level commission</div>
+            </div>
+            <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-4"></div>
+    </div>
+
+    <!-- Newbie Bonus Popup Modal -->
+    <div class="modal-overlay" id="modal-newbie">
+      <div class="bg-white rounded-2xl w-full p-6 text-center" style="max-width: 320px;">
+        <div class="w-20 h-20 mx-auto rounded-full bg-blue-100 flex items-center justify-center mb-4">
+          <i class="fas fa-money-bag-wave text-blue-600 text-3xl"></i>
+        </div>
+        <h3 class="text-xl font-bold text-gray-800">Newbie Bonus</h3>
+        <p class="text-sm text-gray-500 mt-2">Complete newbie tasks to earn ₹60 bonus</p>
+        <div class="flex gap-3 mt-6">
+          <button onclick="hideModal('modal-newbie')" class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-semibold text-sm">NOT NOW</button>
+          <button onclick="hideModal('modal-newbie'); showScreen('screen-newbie')" class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm">CLAIM ₹60</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Nav -->
+    <div class="nav-bar">
+      <div class="nav-item active"><i class="fas fa-home"></i><span>Home</span></div>
+      <div class="nav-item" onclick="showScreen('screen-buy')"><i class="fas fa-shopping-bag"></i><span>Buy</span></div>
+      <div class="nav-item" onclick="showScreen('screen-upi')"><i class="fas fa-money-bill-wave"></i><span>UPI</span></div>
+      <div class="nav-item" onclick="showScreen('screen-team')"><i class="fas fa-users"></i><span>Team</span></div>
+      <div class="nav-item" onclick="showScreen('screen-my')"><i class="fas fa-user"></i><span>My</span></div>
+    </div>
+  </div>
+
+  <!-- ============ BUY SCREEN ============ -->
+  <div class="screen" id="screen-buy" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-home')"></i>
+        <span class="font-semibold text-gray-800">Buy</span>
+      </div>
+
+      <!-- INR/USDT Toggle -->
+      <div class="px-5 mt-3">
+        <div class="bg-gray-100 rounded-full p-1 flex">
+          <button class="flex-1 gradient-brand text-white py-2 rounded-full text-sm font-semibold">INR</button>
+          <button onclick="showScreen('screen-usdt-buy')" class="flex-1 text-gray-500 py-2 rounded-full text-sm font-semibold">USDT</button>
+        </div>
+      </div>
+
+      <!-- Amount filters -->
+      <div class="px-5 mt-4 flex gap-2 overflow-x-auto" style="scrollbar-width:none;">
+        <button class="bg-blue-600 text-white px-4 py-1.5 rounded-full text-xs whitespace-nowrap">ALL</button>
+        <button class="bg-white text-gray-600 px-4 py-1.5 rounded-full text-xs whitespace-nowrap shadow-sm">0 - 500</button>
+        <button class="bg-white text-gray-600 px-4 py-1.5 rounded-full text-xs whitespace-nowrap shadow-sm">500 - 1000</button>
+        <button class="bg-white text-gray-600 px-4 py-1.5 rounded-full text-xs whitespace-nowrap shadow-sm">1000 - 5000</button>
+        <button class="bg-white text-gray-600 px-4 py-1.5 rounded-full text-xs whitespace-nowrap shadow-sm">5000+</button>
+      </div>
+
+      <!-- Product List -->
+      <div class="px-5 mt-4 space-y-3 pb-4">
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                <i class="fas fa-university text-blue-600 text-xs"></i>
+              </div>
+              <span class="text-sm font-semibold text-gray-800">HDFC Bank</span>
+              <span class="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded">Bank</span>
+            </div>
+            <span class="text-[10px] text-gray-400">2 min ago</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mb-3">
+            <div>
+              <div class="text-[10px] text-gray-400">Amount</div>
+              <div class="text-sm font-bold text-gray-800 mt-0.5">₹10000</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-gray-400">Income</div>
+              <div class="text-sm font-bold text-green-600 mt-0.5">₹256</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-gray-400">Quota</div>
+              <div class="text-sm font-bold text-blue-600 mt-0.5">+10256</div>
+            </div>
+          </div>
+          <button class="w-full gradient-green text-white py-2.5 rounded-xl text-sm font-semibold">Buy</button>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-lg bg-red-100 flex items-center justify-center">
+                <i class="fas fa-university text-red-600 text-xs"></i>
+              </div>
+              <span class="text-sm font-semibold text-gray-800">SBI Bank</span>
+              <span class="text-[10px] bg-red-50 text-red-600 px-2 py-0.5 rounded">Bank</span>
+            </div>
+            <span class="text-[10px] text-gray-400">5 min ago</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mb-3">
+            <div>
+              <div class="text-[10px] text-gray-400">Amount</div>
+              <div class="text-sm font-bold text-gray-800 mt-0.5">₹14544</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-gray-400">Income</div>
+              <div class="text-sm font-bold text-green-600 mt-0.5">₹369.6</div>
+            </div>
+            <div>
+              <div class="text-[10px] text-gray-400">Quota</div>
+              <div class="text-sm font-bold text-blue-600 mt-0.5">+14913.6</div>
+            </div>
+          </div>
+          <button class="w-full bg-gray-200 text-gray-500 py-2.5 rounded-xl text-sm font-semibold">
+            <i class="fas fa-spinner fa-spin mr-2"></i>Confirming
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-bar">
+      <div class="nav-item" onclick="showScreen('screen-home')"><i class="fas fa-home"></i><span>Home</span></div>
+      <div class="nav-item active"><i class="fas fa-shopping-bag"></i><span>Buy</span></div>
+      <div class="nav-item" onclick="showScreen('screen-upi')"><i class="fas fa-money-bill-wave"></i><span>UPI</span></div>
+      <div class="nav-item" onclick="showScreen('screen-team')"><i class="fas fa-users"></i><span>Team</span></div>
+      <div class="nav-item" onclick="showScreen('screen-my')"><i class="fas fa-user"></i><span>My</span></div>
+    </div>
+  </div>
+
+  <!-- ============ USDT BUY SCREEN ============ -->
+  <div class="screen" id="screen-usdt-buy" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-buy')"></i>
+        <span class="font-semibold text-gray-800">Buy USDT</span>
+      </div>
+
+      <div class="px-5 mt-4 flex items-center">
+        <div class="flex flex-col items-center">
+          <div class="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center font-semibold">1</div>
+          <span class="text-[10px] text-blue-600 mt-1">Amount</span>
+        </div>
+        <div class="step-line active"></div>
+        <div class="flex flex-col items-center">
+          <div class="w-6 h-6 rounded-full bg-gray-200 text-gray-400 text-xs flex items-center justify-center font-semibold">2</div>
+          <span class="text-[10px] text-gray-400 mt-1">Transfer</span>
+        </div>
+        <div class="step-line"></div>
+        <div class="flex flex-col items-center">
+          <div class="w-6 h-6 rounded-full bg-gray-200 text-gray-400 text-xs flex items-center justify-center font-semibold">3</div>
+          <span class="text-[10px] text-gray-400 mt-1">Verify</span>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-6 bg-white rounded-2xl p-4 card-shadow">
+        <div class="bg-blue-50 rounded-xl p-3 text-xs text-blue-600 mb-4">
+          <i class="fas fa-info-circle mr-1"></i> Step 1: Enter amount and click Next to get deposit address.
+        </div>
+
+        <label class="text-xs text-gray-500 font-medium">Amount</label>
+        <div class="relative mt-1.5">
+          <input type="text" class="input-field pr-12" placeholder="Enter amount" value="1">
+          <span class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-semibold">USDT</span>
+        </div>
+
+        <div class="flex justify-between text-xs mt-3">
+          <span class="text-gray-500">Exchange Rate</span>
+          <span class="text-gray-800 font-medium">1 USDT = ₹100</span>
+        </div>
+
+        <div class="flex justify-between text-xs mt-2">
+          <span class="text-gray-500">Bonus (6.5%)</span>
+          <span class="text-green-600 font-medium">+₹6.5</span>
+        </div>
+
+        <div class="border-t border-gray-100 mt-3 pt-3 flex justify-between items-center">
+          <span class="text-sm text-gray-700 font-medium">You will receive:</span>
+          <span class="text-xl font-bold text-blue-600">₹106.5</span>
+        </div>
+
+        <button class="btn-primary mt-6">Confirm & Pay</button>
+      </div>
+
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="text-xs text-gray-500 mb-2">Instructions</div>
+        <div class="text-xs text-gray-600 space-y-1">
+          <div>1. Enter the amount of USDT you want to buy.</div>
+          <div>2. Transfer USDT to the provided deposit address within the time limit.</div>
+          <div>3. Upload proof of payment and submit for verification.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-bar">
+      <div class="nav-item" onclick="showScreen('screen-home')"><i class="fas fa-home"></i><span>Home</span></div>
+      <div class="nav-item active"><i class="fas fa-shopping-bag"></i><span>Buy</span></div>
+      <div class="nav-item" onclick="showScreen('screen-upi')"><i class="fas fa-money-bill-wave"></i><span>UPI</span></div>
+      <div class="nav-item" onclick="showScreen('screen-team')"><i class="fas fa-users"></i><span>Team</span></div>
+      <div class="nav-item" onclick="showScreen('screen-my')"><i class="fas fa-user"></i><span>My</span></div>
+    </div>
+  </div>
+
+  <!-- ============ UPI SCREEN ============ -->
+  <div class="screen" id="screen-upi" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center justify-between bg-white">
+        <span class="font-semibold text-gray-800">UPI Payment</span>
+        <i class="fas fa-plus-circle text-blue-600"></i>
+      </div>
+
+      <div class="px-5 mt-4 space-y-3 pb-4">
+        <div class="text-xs text-gray-500 px-2">Manage your UPI accounts for fast transactions</div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+              <i class="fas fa-wallet text-blue-600"></i>
+            </div>
+            <div>
+              <div class="text-sm font-semibold text-gray-800">PayTm</div>
+              <div class="text-xs text-gray-500 mt-0.5">sumrtranhjmqkq@ptyes</div>
+              <div class="text-[10px] text-green-600 mt-1"><i class="fas fa-circle text-[6px] mr-1"></i>Active</div>
+            </div>
+          </div>
+          <div class="toggle-switch active" onclick="this.classList.toggle('active')"></div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+              <i class="fas fa-wallet text-purple-600"></i>
+            </div>
+            <div>
+              <div class="text-sm font-semibold text-gray-800">Navi</div>
+              <div class="text-xs text-gray-500 mt-0.5">sumrtranhjmqkq@navi</div>
+              <div class="text-[10px] text-green-600 mt-1"><i class="fas fa-circle text-[6px] mr-1"></i>Active</div>
+            </div>
+          </div>
+          <div class="toggle-switch active" onclick="this.classList.toggle('active')"></div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow flex items-center justify-between opacity-60">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+              <i class="fas fa-wallet text-gray-600"></i>
+            </div>
+            <div>
+              <div class="text-sm font-semibold text-gray-800">PhonePe</div>
+              <div class="text-xs text-gray-500 mt-0.5">sumrtranhjmqkq@ybl</div>
+              <div class="text-[10px] text-red-500 mt-1"><i class="fas fa-circle text-[6px] mr-1"></i>Unauthorized</div>
+            </div>
+          </div>
+          <div class="toggle-switch" onclick="this.classList.toggle('active')"></div>
+        </div>
+
+        <button class="w-full border-2 border-dashed border-blue-200 text-blue-600 py-3 rounded-xl text-sm font-semibold mt-4">
+          <i class="fas fa-plus mr-2"></i>Add UPI ID
+        </button>
+      </div>
+    </div>
+
+    <div class="nav-bar">
+      <div class="nav-item" onclick="showScreen('screen-home')"><i class="fas fa-home"></i><span>Home</span></div>
+      <div class="nav-item" onclick="showScreen('screen-buy')"><i class="fas fa-shopping-bag"></i><span>Buy</span></div>
+      <div class="nav-item active"><i class="fas fa-money-bill-wave"></i><span>UPI</span></div>
+      <div class="nav-item" onclick="showScreen('screen-team')"><i class="fas fa-users"></i><span>Team</span></div>
+      <div class="nav-item" onclick="showScreen('screen-my')"><i class="fas fa-user"></i><span>My</span></div>
+    </div>
+  </div>
+
+  <!-- ============ TEAM / COMMISSION SCREEN ============ -->
+  <div class="screen" id="screen-team" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center justify-between bg-white">
+        <span class="font-semibold text-gray-800">My Commission</span>
+        <i class="fas fa-headset text-gray-600"></i>
+      </div>
+
+      <div class="mx-5 mt-3 rounded-2xl gradient-brand p-5 text-white relative overflow-hidden border border-slate-800">
+        <div class="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-blue-600 opacity-20"></div>
+        <div class="relative">
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="text-xs text-gray-400">UID</div>
+              <div class="text-sm font-semibold mt-0.5">M118248</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">Total Members</div>
+              <div class="text-sm font-semibold mt-0.5">1</div>
+            </div>
+          </div>
+          <div class="mt-4">
+            <div class="text-xs text-gray-400">Total Earnings</div>
+            <div class="text-3xl font-bold mt-1">₹10751.28</div>
+          </div>
+          <div class="flex gap-6 mt-4">
+            <div>
+              <div class="text-xs text-gray-400">Yesterday</div>
+              <div class="text-sm font-semibold mt-0.5">₹620.23</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-400">Today</div>
+              <div class="text-sm font-semibold mt-0.5">₹0.00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="font-semibold text-gray-800 mb-3">My Team</div>
+        <div class="grid grid-cols-3 gap-2">
+          <div class="bg-gray-50 rounded-xl p-3 text-center">
+            <div class="text-xs text-gray-400">Level 1</div>
+            <div class="text-base font-bold text-blue-600 mt-1">₹5.64</div>
+            <div class="text-xs text-gray-500 mt-1">1 member</div>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-3 text-center">
+            <div class="text-xs text-gray-400">Level 2</div>
+            <div class="text-base font-bold text-gray-400 mt-1">₹0.00</div>
+            <div class="text-xs text-gray-500 mt-1">0 member</div>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-3 text-center">
+            <div class="text-xs text-gray-400">Level 3</div>
+            <div class="text-base font-bold text-gray-400 mt-1">₹0.00</div>
+            <div class="text-xs text-gray-500 mt-1">0 member</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="font-semibold text-gray-800 mb-3">Team Details</div>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between p-3 bg-gray-50 rounded-xl">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-semibold text-xs">M1</div>
+              <div>
+                <div class="text-sm font-medium text-gray-800">UID: M121371</div>
+                <div class="text-xs text-gray-400">Level 1</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">Orders</div>
+              <div class="text-sm font-semibold text-gray-800">+0</div>
+              <div class="text-xs text-gray-500 mt-0.5">₹0.00</div>
+            </div>
+          </div>
+          <div class="text-center text-xs text-gray-400 py-3">No more members</div>
+        </div>
+      </div>
+
+      <div class="h-4"></div>
+    </div>
+
+    <!-- Invite Popup Modal -->
+    <div class="modal-overlay" id="modal-invite">
+      <div class="bg-white rounded-2xl w-full p-5 text-center" style="max-width: 320px;">
+        <div class="flex justify-end mb-2">
+          <i class="fas fa-times text-gray-400 cursor-pointer" onclick="hideModal('modal-invite')"></i>
+        </div>
+        <h3 class="text-lg font-bold text-gray-800">Invite Friends</h3>
+        <p class="text-xs text-gray-500 mt-1">UID: M118248</p>
+        
+        <div class="grid grid-cols-3 gap-2 mt-4 text-xs">
+          <div class="bg-gray-50 rounded-lg p-2">
+            <div class="text-gray-400">Total</div>
+            <div class="font-bold text-gray-800 mt-1">₹10751.28</div>
+          </div>
+          <div class="bg-gray-50 rounded-lg p-2">
+            <div class="text-gray-400">Yesterday</div>
+            <div class="font-bold text-gray-800 mt-1">₹620.23</div>
+          </div>
+          <div class="bg-gray-50 rounded-lg p-2">
+            <div class="text-gray-400">Today</div>
+            <div class="font-bold text-gray-800 mt-1">₹0.00</div>
+          </div>
+        </div>
+
+        <div class="mt-4 text-left">
+          <label class="text-xs text-gray-400">Share Link</label>
+          <div class="flex items-center gap-2 mt-1 bg-gray-100 rounded-lg p-2">
+            <span class="text-[10px] text-gray-600 flex-1 truncate">https://register.TpayX.com/...</span>
+            <button class="text-blue-600 font-semibold text-xs">COPY</button>
+          </div>
+        </div>
+
+        <div class="mt-2 text-left">
+          <label class="text-xs text-gray-400">Promo Code</label>
+          <div class="flex items-center gap-2 mt-1 bg-gray-100 rounded-lg p-2">
+            <span class="text-sm text-gray-800 font-mono flex-1 text-left">tp3340vnxr</span>
+            <button class="text-blue-600 font-semibold text-xs">COPY</button>
+          </div>
+        </div>
+
+        <div class="flex justify-center gap-4 mt-5">
+          <div class="flex flex-col items-center cursor-pointer">
+            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-1">
+              <i class="fab fa-telegram"></i>
+            </div>
+            <span class="text-[10px] text-gray-500">Telegram</span>
+          </div>
+          <div class="flex flex-col items-center cursor-pointer">
+            <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 mb-1">
+              <i class="fab fa-whatsapp"></i>
+            </div>
+            <span class="text-[10px] text-gray-500">WhatsApp</span>
+          </div>
+          <div class="flex flex-col items-center cursor-pointer">
+            <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 mb-1">
+              <i class="fab fa-facebook-f"></i>
+            </div>
+            <span class="text-[10px] text-gray-500">Facebook</span>
+          </div>
+        </div>
+
+        <button onclick="hideModal('modal-invite')" class="w-full mt-6 py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm">GOT IT</button>
+      </div>
+    </div>
+
+    <button class="absolute right-4 bottom-24 bg-blue-600 text-white px-5 py-3 rounded-full shadow-lg flex items-center gap-2 text-sm font-semibold" onclick="showModal('modal-invite')">
+      <i class="fas fa-user-plus"></i>Invite
+    </button>
+
+    <div class="nav-bar">
+      <div class="nav-item" onclick="showScreen('screen-home')"><i class="fas fa-home"></i><span>Home</span></div>
+      <div class="nav-item" onclick="showScreen('screen-buy')"><i class="fas fa-shopping-bag"></i><span>Buy</span></div>
+      <div class="nav-item" onclick="showScreen('screen-upi')"><i class="fas fa-money-bill-wave"></i><span>UPI</span></div>
+      <div class="nav-item active"><i class="fas fa-users"></i><span>Team</span></div>
+      <div class="nav-item" onclick="showScreen('screen-my')"><i class="fas fa-user"></i><span>My</span></div>
+    </div>
+  </div>
+
+  <!-- ============ MY / PROFILE SCREEN ============ -->
+  <div class="screen" id="screen-my" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="gradient-brand px-5 py-5 text-white">
+        <div class="flex items-center gap-3">
+          <div class="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center text-2xl font-bold">T</div>
+          <div class="flex-1">
+            <div class="text-base font-semibold">TpayX_User</div>
+            <div class="text-xs text-gray-400 mt-0.5">UID: M118248</div>
+          </div>
+          <i class="fas fa-cog" onclick="showScreen('screen-change-password')"></i>
+        </div>
+      </div>
+
+      <div class="px-5 -mt-3">
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="grid grid-cols-3 gap-2">
+            <div class="text-center">
+              <div class="text-xs text-gray-400">BCoin Balance</div>
+              <div class="text-base font-bold text-blue-600 mt-1">₹115.77</div>
+            </div>
+            <div class="text-center border-l border-r border-gray-100">
+              <div class="text-xs text-gray-400">Total Earnings</div>
+              <div class="text-base font-bold text-gray-800 mt-1">₹10751.28</div>
+            </div>
+            <div class="text-center">
+              <div class="text-xs text-gray-400">Today's Profit</div>
+              <div class="text-base font-bold text-gray-800 mt-1">₰0</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="grid grid-cols-4 gap-2 text-center">
+          <div>
+            <div class="w-12 h-12 mx-auto rounded-full bg-blue-50 flex items-center justify-center">
+              <i class="fas fa-rupee-sign text-blue-500"></i>
+            </div>
+            <div class="text-sm font-semibold text-gray-800 mt-2">INR</div>
+            <div class="text-xs text-gray-400">(0)</div>
+          </div>
+          <div>
+            <div class="w-12 h-12 mx-auto rounded-full bg-green-50 flex items-center justify-center">
+              <i class="fas fa-tag text-green-500"></i>
+            </div>
+            <div class="text-sm font-semibold text-gray-800 mt-2">Sell</div>
+            <div class="text-xs text-gray-400">(0)</div>
+          </div>
+          <div>
+            <div class="w-12 h-12 mx-auto rounded-full bg-orange-50 flex items-center justify-center">
+              <i class="fab fa-bitcoin text-orange-500"></i>
+            </div>
+            <div class="text-sm font-semibold text-gray-800 mt-2">USDT</div>
+            <div class="text-xs text-gray-400">(0)</div>
+          </div>
+          <div>
+            <div class="w-12 h-12 mx-auto rounded-full bg-purple-50 flex items-center justify-center">
+              <i class="fas fa-chart-line text-purple-500"></i>
+            </div>
+            <div class="text-sm font-semibold text-gray-800 mt-2">Profit</div>
+            <div class="text-xs text-gray-400">(0)</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4 bg-white rounded-2xl card-shadow overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100">
+          <span class="font-semibold text-gray-800">History</span>
+        </div>
+        <div onclick="showScreen('screen-history')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center">
+              <i class="fas fa-shopping-cart text-blue-500 text-sm"></i>
+            </div>
+            <span class="text-sm text-gray-700">Buy History</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-sell-history')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center">
+              <i class="fas fa-tag text-green-500 text-sm"></i>
+            </div>
+            <span class="text-sm text-gray-700">Sell History</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-usdt-history')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center">
+              <i class="fab fa-bitcoin text-orange-500 text-sm"></i>
+            </div>
+            <span class="text-sm text-gray-700">USDT History</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-quota-history')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-purple-50 flex items-center justify-center">
+              <i class="fas fa-list text-purple-500 text-sm"></i>
+            </div>
+            <span class="text-sm text-gray-700">Quota History</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4 bg-white rounded-2xl card-shadow overflow-hidden">
+        <div onclick="showScreen('screen-newbie')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-gift text-pink-500 w-5"></i>
+            <span class="text-sm text-gray-700">Newbie Bonus</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-daily')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-calendar-check text-green-500 w-5"></i>
+            <span class="text-sm text-gray-700">Daily Bonus</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-learn')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-graduation-cap text-blue-500 w-5"></i>
+            <span class="text-sm text-gray-700">Learn & Earn</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-messages')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-comment-alt text-yellow-500 w-5"></i>
+            <span class="text-sm text-gray-700">Messages</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-service')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-headset text-purple-500 w-5"></i>
+            <span class="text-sm text-gray-700">Service</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-change-password')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-lock text-gray-500 w-5"></i>
+            <span class="text-sm text-gray-700">Change Password</span>
+          </div>
+          <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+        </div>
+        <div onclick="showScreen('screen-login'); showToast('Logged out successfully!')" class="flex items-center justify-between px-4 py-3.5 cursor-pointer hover:bg-gray-50">
+          <div class="flex items-center gap-3">
+            <i class="fas fa-sign-out-alt text-red-500 w-5"></i>
+            <span class="text-sm text-red-500 font-semibold">Logout</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="h-4"></div>
+    </div>
+
+    <div class="nav-bar">
+      <div class="nav-item" onclick="showScreen('screen-home')"><i class="fas fa-home"></i><span>Home</span></div>
+      <div class="nav-item" onclick="showScreen('screen-buy')"><i class="fas fa-shopping-bag"></i><span>Buy</span></div>
+      <div class="nav-item" onclick="showScreen('screen-upi')"><i class="fas fa-money-bill-wave"></i><span>UPI</span></div>
+      <div class="nav-item" onclick="showScreen('screen-team')"><i class="fas fa-users"></i><span>Team</span></div>
+      <div class="nav-item active"><i class="fas fa-user"></i><span>My</span></div>
+    </div>
+  </div>
+
+  <!-- ============ BUY HISTORY SCREEN ============ -->
+  <div class="screen" id="screen-history" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-my')"></i>
+        <span class="font-semibold text-gray-800">Buy History</span>
+      </div>
+
+      <div class="px-5 mt-3 flex gap-4 border-b border-gray-100">
+        <button class="text-sm font-semibold text-blue-600 pb-2 border-b-2 border-blue-600">All</button>
+        <button class="text-sm text-gray-500 pb-2">Confirming</button>
+        <button class="text-sm text-gray-500 pb-2">Completed</button>
+        <button class="text-sm text-gray-500 pb-2">Cancel</button>
+      </div>
+
+      <div class="px-5 mt-4 space-y-3 pb-4">
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full font-medium">Confirming</span>
+            <span class="text-xs text-gray-400">16/07/2026 22:39:40</span>
+          </div>
+          <div class="flex items-baseline justify-between mb-2">
+            <span class="text-2xl font-bold text-gray-800">₹10000</span>
+            <span class="text-sm text-green-600 font-semibold">+₹256</span>
+          </div>
+          <div class="flex justify-between items-center pt-3 border-t border-gray-50">
+            <div>
+              <div class="text-xs text-gray-400">Total</div>
+              <div class="text-sm font-semibold text-gray-800 mt-0.5">₹10256</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">Order ID</div>
+              <div class="text-xs text-gray-600 mt-0.5">gn20260716223940D3A083</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow opacity-75">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full font-medium">Cancel</span>
+            <span class="text-xs text-gray-400">16/07/2026 18:22:15</span>
+          </div>
+          <div class="flex items-baseline justify-between mb-2">
+            <span class="text-2xl font-bold text-gray-600">₹10000</span>
+            <span class="text-sm text-gray-400 font-semibold line-through">+₹256</span>
+          </div>
+          <div class="flex justify-between items-center pt-3 border-t border-gray-50">
+            <div>
+              <div class="text-xs text-gray-400">Total</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">₹0</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">Order ID</div>
+              <div class="text-xs text-gray-500 mt-0.5">gn20260716182215A2B891</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SELL HISTORY SCREEN ============ -->
+  <div class="screen" id="screen-sell-history" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-my')"></i>
+        <span class="font-semibold text-gray-800">Sell History</span>
+      </div>
+
+      <div class="px-5 mt-4 space-y-3 pb-4">
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex justify-between items-start mb-3">
+            <span class="text-xl font-bold text-gray-800">₹299.94</span>
+            <span class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">Success</span>
+          </div>
+          <div class="border-t border-gray-100 pt-3 space-y-1.5 text-xs text-gray-500">
+            <div class="flex justify-between"><span>Wallet</span><span class="text-gray-700 font-medium">paytm</span></div>
+            <div class="flex justify-between"><span>UPI ID</span><span class="text-gray-700 font-medium">sumrtranhjmqkq@ptyes</span></div>
+            <div class="flex justify-between"><span>UTR</span><span class="text-gray-700 font-medium">458712345678</span></div>
+            <div class="flex justify-between"><span>Time</span><span class="text-gray-700">16/07/2026 10:22:15</span></div>
+            <div class="flex justify-between"><span>Transaction ID</span><span class="text-gray-700">TXN9632587410</span></div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex justify-between items-start mb-3">
+            <span class="text-xl font-bold text-gray-800">₹298.06</span>
+            <span class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">Success</span>
+          </div>
+          <div class="border-t border-gray-100 pt-3 space-y-1.5 text-xs text-gray-500">
+            <div class="flex justify-between"><span>Wallet</span><span class="text-gray-700 font-medium">paytm</span></div>
+            <div class="flex justify-between"><span>UPI ID</span><span class="text-gray-700 font-medium">sumrtranhjmqkq@ptyes</span></div>
+            <div class="flex justify-between"><span>UTR</span><span class="text-gray-700 font-medium">458712345679</span></div>
+            <div class="flex justify-between"><span>Time</span><span class="text-gray-700">15/07/2026 14:08:33</span></div>
+            <div class="flex justify-between"><span>Transaction ID</span><span class="text-gray-700">TXN9632587411</span></div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex justify-between items-start mb-3">
+            <span class="text-xl font-bold text-gray-800">₹6999.64</span>
+            <span class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">Success</span>
+          </div>
+          <div class="border-t border-gray-100 pt-3 space-y-1.5 text-xs text-gray-500">
+            <div class="flex justify-between"><span>Wallet</span><span class="text-gray-700 font-medium">paytm</span></div>
+            <div class="flex justify-between"><span>UPI ID</span><span class="text-gray-700 font-medium">sumrtranhjmqkq@ptyes</span></div>
+            <div class="flex justify-between"><span>UTR</span><span class="text-gray-700 font-medium">458712345680</span></div>
+            <div class="flex justify-between"><span>Time</span><span class="text-gray-700">12/07/2026 09:15:00</span></div>
+            <div class="flex justify-between"><span>Transaction ID</span><span class="text-gray-700">TXN9632587412</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ USDT HISTORY SCREEN ============ -->
+  <div class="screen" id="screen-usdt-history" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-my')"></i>
+        <span class="font-semibold text-gray-800">USDT History</span>
+      </div>
+
+      <div class="px-5 mt-4 space-y-3 pb-4">
+        <div class="bg-white rounded-2xl p-4 card-shadow opacity-75">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full font-medium">Canceled</span>
+            <span class="text-xs text-gray-400">16/07/2026 23:05:15</span>
+          </div>
+          <div class="flex items-baseline justify-between mb-2">
+            <span class="text-xl font-bold text-gray-600">1 USDT</span>
+          </div>
+          <div class="flex justify-between items-center pt-3 border-t border-gray-50">
+            <div>
+              <div class="text-xs text-gray-400">Reward</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">+₹0</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-400">Received</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">₹0</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">Order ID</div>
+              <div class="text-[10px] text-gray-500 mt-0.5">gu2026071623051518F11</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow opacity-75">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs bg-red-100 text-red-600 px-2 py-1 rounded-full font-medium">Canceled</span>
+            <span class="text-xs text-gray-400">09/06/2026 10:45:23</span>
+          </div>
+          <div class="flex items-baseline justify-between mb-2">
+            <span class="text-xl font-bold text-gray-600">1 USDT</span>
+          </div>
+          <div class="flex justify-between items-center pt-3 border-t border-gray-50">
+            <div>
+              <div class="text-xs text-gray-400">Reward</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">+₹0</div>
+            </div>
+            <div>
+              <div class="text-xs text-gray-400">Received</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">₹0</div>
+            </div>
+            <div class="text-right">
+              <div class="text-xs text-gray-400">Order ID</div>
+              <div class="text-[10px] text-gray-500 mt-0.5">gu20260609104523916278</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-center text-xs text-gray-400 py-4">No more data to display.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ QUOTA HISTORY SCREEN ============ -->
+  <div class="screen" id="screen-quota-history" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-my')"></i>
+        <span class="font-semibold text-gray-800">Quota History</span>
+      </div>
+
+      <div class="px-5 mt-4 space-y-3 pb-4">
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex justify-between items-start">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                <i class="fas fa-arrow-up text-red-500"></i>
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-gray-800">Withdraw</div>
+                <div class="text-xs text-gray-400 mt-0.5">16/07/2026 22:45:10</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold text-red-500">-299.94 INR</div>
+              <div class="text-xs text-gray-400 mt-1">Bal: ₹10451.34</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex justify-between items-start">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+                <i class="fas fa-gift text-green-500"></i>
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-gray-800">INR Bonus</div>
+                <div class="text-xs text-gray-400 mt-0.5">16/07/2026 22:39:40</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold text-green-500">+256.00 INR</div>
+              <div class="text-xs text-gray-400 mt-1">Bal: ₹10751.28</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex justify-between items-start">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-green-50 flex items-center justify-center">
+                <i class="fas fa-coins text-green-500"></i>
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-gray-800">Income</div>
+                <div class="text-xs text-gray-400 mt-0.5">16/07/2026 18:20:00</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold text-green-500">+620.23 INR</div>
+              <div class="text-xs text-gray-400 mt-1">Bal: ₹10495.28</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="flex justify-between items-start">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
+                <i class="fas fa-arrow-up text-red-500"></i>
+              </div>
+              <div>
+                <div class="text-sm font-semibold text-gray-800">Withdraw</div>
+                <div class="text-xs text-gray-400 mt-0.5">15/07/2026 14:12:33</div>
+              </div>
+            </div>
+            <div class="text-right">
+              <div class="text-sm font-bold text-red-500">-500.00 INR</div>
+              <div class="text-xs text-gray-400 mt-1">Bal: ₹9875.05</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-center text-xs text-gray-400 py-4">No more data to display.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MESSAGES SCREEN ============ -->
+  <div class="screen" id="screen-messages" style="background: #fff;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-home')"></i>
+        <span class="font-semibold text-gray-800">Messages</span>
+      </div>
+      <div class="flex flex-col items-center justify-center h-[75vh] text-center px-6">
+        <div class="relative w-24 h-24 flex items-center justify-center mb-6">
+          <div class="absolute inset-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-3xl shadow-lg rotate-6"></div>
+          <div class="absolute inset-0 bg-gradient-to-br from-blue-400 to-blue-600 rounded-3xl shadow-lg flex items-center justify-center">
+            <i class="fas fa-envelope-open-text text-white text-4xl"></i>
+          </div>
+          <div class="absolute -bottom-2 -right-2 w-8 h-8 bg-yellow-400 rounded-full flex items-center justify-center shadow-md border-2 border-white">
+            <i class="fas fa-smile text-gray-800"></i>
+          </div>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-800">No data available</h3>
+        <p class="text-sm text-gray-500 mt-2">You have no new messages.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SERVICE SCREEN ============ -->
+  <div class="screen" id="screen-service" style="background: #fff;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-home')"></i>
+        <span class="font-semibold text-gray-800">Service</span>
+      </div>
+      <div class="px-5 mt-4">
+        <div class="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl cursor-pointer hover:bg-gray-100 transition-colors">
+          <div class="relative">
+            <div class="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-bold text-lg shadow-md">T</div>
+            <div class="absolute bottom-0 right-0 w-4 h-4 bg-green-500 rounded-full border-2 border-white"></div>
+          </div>
+          <div class="flex-1">
+            <div class="text-sm font-semibold text-gray-800">TpayX Support</div>
+            <div class="text-xs text-green-500 mt-0.5">Online</div>
+          </div>
+          <i class="fas fa-comment-dots text-blue-500 text-xl"></i>
+        </div>
+        
+        <div class="mt-8 text-center text-xs text-gray-400">
+          <p>Need help? Contact our customer service.</p>
+          <p class="mt-1">We are available 24/7 to assist you.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CHANGE PASSWORD SCREEN ============ -->
+  <div class="screen" id="screen-change-password" style="background: #fff;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-my')"></i>
+        <span class="font-semibold text-gray-800">Change Password</span>
+      </div>
+
+      <div class="px-6 mt-6 space-y-5">
+        <div class="bg-blue-50 rounded-xl p-3 text-xs text-blue-600 flex items-start gap-2">
+          <i class="fas fa-shield-alt mt-0.5"></i>
+          <span>For your account security, please do not share your password with anyone.</span>
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-500 font-medium">New Password</label>
+          <div class="relative mt-1.5">
+            <input type="password" class="input-field" placeholder="Enter new password">
+            <i class="fas fa-eye-slash text-gray-400 absolute right-4 top-1/2 -translate-y-1/2"></i>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-500 font-medium">Confirm New Password</label>
+          <div class="relative mt-1.5">
+            <input type="password" class="input-field" placeholder="Re-enter password">
+            <i class="fas fa-eye-slash text-gray-400 absolute right-4 top-1/2 -translate-y-1/2"></i>
+          </div>
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-500 font-medium">OTP</label>
+          <div class="flex items-center gap-2 mt-1.5">
+            <input type="text" class="input-field flex-1" placeholder="Enter 6-digit OTP">
+            <button class="bg-blue-50 text-blue-600 font-semibold px-4 py-3 rounded-xl text-sm whitespace-nowrap">Send OTP</button>
+          </div>
+        </div>
+
+        <button onclick="showScreen('screen-my'); showToast('Password changed successfully!')" class="btn-primary mt-6">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ NEWBIE BONUS SCREEN ============ -->
+  <div class="screen" id="screen-newbie" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-home')"></i>
+        <span class="font-semibold text-gray-800">Newbie Bonus</span>
+      </div>
+
+      <div class="mx-5 mt-3 rounded-2xl bg-gradient-to-r from-blue-600 to-blue-800 p-5 text-white relative overflow-hidden">
+        <div class="absolute -right-4 -top-4 text-6xl opacity-20">🎁</div>
+        <div class="relative">
+          <div class="text-lg font-bold">Welcome Bonus</div>
+          <div class="text-xs opacity-90 mt-1">Time Limited</div>
+          <div class="mt-4 bg-white/20 backdrop-blur rounded-xl p-3">
+            <div class="text-xs opacity-80">Distance to end</div>
+            <div class="text-2xl font-bold mt-1 font-mono">00:00:00</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4 grid grid-cols-2 gap-3">
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="text-xs text-gray-400">Event Recharge</div>
+          <div class="text-xl font-bold text-gray-800 mt-1">₹0</div>
+        </div>
+        <div class="bg-white rounded-2xl p-4 card-shadow">
+          <div class="text-xs text-gray-400">Claimable Reward</div>
+          <div class="text-xl font-bold text-blue-600 mt-1">₹0</div>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-sm font-semibold text-gray-800">Cumulative rewards for promotion</span>
+          <span class="text-xs text-gray-400">(0/6)</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="flex-1 bg-gray-100 rounded-full h-2">
+            <div class="bg-blue-600 h-2 rounded-full" style="width:0%"></div>
+          </div>
+          <button class="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold">Get</button>
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4">
+        <div class="flex items-center justify-between mb-3">
+          <span class="font-semibold text-gray-800">Newbies Basic Tasks</span>
+          <div class="flex gap-3 text-xs">
+            <span class="text-gray-400">Total: <span class="font-semibold text-gray-700">60</span></span>
+            <span class="text-gray-400">Rewarded: <span class="font-semibold text-green-600">60</span></span>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow mb-3">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-400 to-purple-400 flex items-center justify-center">
+              <i class="fas fa-lock text-white"></i>
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-gray-800">Set PIN</span>
+                <i class="fas fa-check-circle text-green-500 text-xs"></i>
+              </div>
+              <div class="text-xs text-gray-400 mt-0.5">Set your transaction PIN</div>
+            </div>
+            <div class="text-right">
+              <div class="flex items-center gap-1">
+                <i class="fas fa-coins text-yellow-500 text-xs"></i>
+                <span class="text-sm font-bold text-blue-600">20</span>
+              </div>
+              <button class="text-xs text-green-600 mt-1 font-semibold">Completed</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow mb-3">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-green-400 to-teal-400 flex items-center justify-center">
+              <i class="fas fa-headset text-white"></i>
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-gray-800">Add Support</span>
+                <i class="fas fa-check-circle text-green-500 text-xs"></i>
+              </div>
+              <div class="text-xs text-gray-400 mt-0.5">Add customer service contact</div>
+            </div>
+            <div class="text-right">
+              <div class="flex items-center gap-1">
+                <i class="fas fa-coins text-yellow-500 text-xs"></i>
+                <span class="text-sm font-bold text-blue-600">20</span>
+              </div>
+              <button class="text-xs text-green-600 mt-1 font-semibold">Completed</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl p-4 card-shadow mb-3">
+          <div class="flex items-center gap-3">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-400 to-cyan-400 flex items-center justify-center">
+              <i class="fab fa-telegram text-white"></i>
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2">
+                <span class="text-sm font-semibold text-gray-800">Join Bot</span>
+                <i class="fas fa-check-circle text-green-500 text-xs"></i>
+              </div>
+              <div class="text-xs text-gray-400 mt-0.5">Join our Telegram bot</div>
+            </div>
+            <div class="text-right">
+              <div class="flex items-center gap-1">
+                <i class="fas fa-coins text-yellow-500 text-xs"></i>
+                <span class="text-sm font-bold text-blue-600">20</span>
+              </div>
+              <button class="text-xs text-green-600 mt-1 font-semibold">Completed</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-yellow-50 rounded-xl p-3 flex items-start gap-2 mt-2">
+          <i class="fas fa-info-circle text-yellow-500 mt-0.5 text-sm"></i>
+          <span class="text-xs text-yellow-700">Rewards can be claimed for each completed task.</span>
+        </div>
+      </div>
+
+      <div class="h-4"></div>
+    </div>
+  </div>
+
+  <!-- ============ DAILY BONUS SCREEN ============ -->
+  <div class="screen" id="screen-daily" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-home')"></i>
+        <span class="font-semibold text-gray-800">Daily Bonus</span>
+      </div>
+
+      <div class="mx-5 mt-3 bg-white rounded-2xl p-4 card-shadow">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-8 h-8 rounded-lg gradient-green flex items-center justify-center">
+            <span class="text-white text-xs font-bold">₹</span>
+          </div>
+          <span class="font-semibold text-gray-800">INR Daily Bonus</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="bg-gray-50 rounded-xl p-3">
+            <div class="text-xs text-gray-400">Deposit Orders</div>
+            <div class="text-lg font-bold text-gray-800 mt-1">0</div>
+          </div>
+          <div class="bg-gray-50 rounded-xl p-3">
+            <div class="text-xs text-gray-400">Expected Reward</div>
+            <div class="text-lg font-bold text-green-600 mt-1">₹0</div>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-500">8 orders</span>
+                <span class="text-green-600 font-semibold">+7</span>
+              </div>
+              <div class="bg-gray-100 rounded-full h-2">
+                <div class="gradient-green h-2 rounded-full" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-500">12 orders</span>
+                <span class="text-green-600 font-semibold">+17</span>
+              </div>
+              <div class="bg-gray-100 rounded-full h-2">
+                <div class="gradient-green h-2 rounded-full" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-500">18 orders</span>
+                <span class="text-green-600 font-semibold">+27</span>
+              </div>
+              <div class="bg-gray-100 rounded-full h-2">
+                <div class="gradient-green h-2 rounded-full" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button class="w-full gradient-green text-white py-2.5 rounded-xl text-sm font-semibold mt-4">Get</button>
+        <div class="bg-gray-50 rounded-xl p-3 mt-3 text-xs text-gray-500 leading-relaxed">
+          <i class="fas fa-info-circle mr-1"></i> Rewards calculated daily at 03:20. No rolling required.
+        </div>
+      </div>
+
+      <div class="mx-5 mt-4 bg-white rounded-2xl p-4 card-shadow">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-8 h-8 rounded-lg gradient-brand flex items-center justify-center">
+            <span class="text-blue-500 text-xs font-bold">₿</span>
+          </div>
+          <span class="font-semibold text-gray-800">USDT Daily Bonus</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="bg-gray-50 rounded-xl p-3">
+            <div class="text-xs text-gray-400">Daily Recharge</div>
+            <div class="text-lg font-bold text-gray-800 mt-1">0 USDT</div>
+          </div>
+          <div class="bg-blue-50 rounded-xl p-3">
+            <div class="text-xs text-blue-500">Expected Reward</div>
+            <div class="text-lg font-bold text-blue-600 mt-1">0 USDT</div>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex items-center gap-3">
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-500">300 U</span>
+                <span class="text-blue-600 font-semibold">+1 U</span>
+              </div>
+              <div class="bg-gray-100 rounded-full h-2">
+                <div class="bg-blue-600 h-2 rounded-full" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-500">500 U</span>
+                <span class="text-blue-600 font-semibold">+2 U</span>
+              </div>
+              <div class="bg-gray-100 rounded-full h-2">
+                <div class="bg-blue-600 h-2 rounded-full" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="flex-1">
+              <div class="flex justify-between text-xs mb-1">
+                <span class="text-gray-500">800 U</span>
+                <span class="text-blue-600 font-semibold">+3 U</span>
+              </div>
+              <div class="bg-gray-100 rounded-full h-2">
+                <div class="bg-blue-600 h-2 rounded-full" style="width:0%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button class="w-full bg-blue-600 text-white py-2.5 rounded-xl text-sm font-semibold mt-4">Get</button>
+      </div>
+
+      <div class="h-4"></div>
+    </div>
+  </div>
+
+  <!-- ============ LEARN & EARN SCREEN ============ -->
+  <div class="screen" id="screen-learn" style="background: #f5f7fa;">
+    <div class="scroll-area" style="padding-top:44px;">
+      <div class="px-5 py-3 flex items-center bg-white">
+        <i class="fas fa-arrow-left text-gray-700 mr-3" onclick="showScreen('screen-home')"></i>
+        <span class="font-semibold text-gray-800">Learn & Earn</span>
+      </div>
+
+      <div class="px-5 mt-3 space-y-3 pb-4">
+        <div class="bg-white rounded-2xl overflow-hidden card-shadow">
+          <div class="h-32 bg-gradient-to-br from-purple-500 to-pink-500 relative">
+            <div class="absolute inset-0 flex items-center justify-center">
+              <i class="fas fa-user-tie text-white text-5xl opacity-90"></i>
+            </div>
+            <div class="absolute top-3 right-3 bg-black/30 backdrop-blur text-white text-xs px-2 py-1 rounded-full">2 min read</div>
+          </div>
+          <div class="p-4">
+            <div class="text-sm font-semibold text-gray-800">Limited-time agent recruitment</div>
+            <div class="text-xs text-gray-500 mt-1">Become an agent and earn 3-level commissions.</div>
+            <button class="mt-3 text-xs text-blue-600 font-semibold flex items-center gap-1">
+              Learn more <i class="fas fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl overflow-hidden card-shadow">
+          <div class="h-32 bg-gradient-to-br from-blue-500 to-cyan-500 relative">
+            <div class="absolute inset-0 flex items-center justify-center">
+              <i class="fas fa-users text-white text-5xl opacity-90"></i>
+            </div>
+            <div class="absolute top-3 right-3 bg-black/30 backdrop-blur text-white text-xs px-2 py-1 rounded-full">3 min read</div>
+          </div>
+          <div class="p-4">
+            <div class="text-sm font-semibold text-gray-800">Invite Rewards & Make Money With Friends</div>
+            <div class="text-xs text-gray-500 mt-1">Share your invite link and earn rewards.</div>
+            <button class="mt-3 text-xs text-blue-600 font-semibold flex items-center gap-1">
+              Learn more <i class="fas fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl overflow-hidden card-shadow">
+          <div class="h-32 bg-gradient-to-br from-red-500 to-orange-500 relative">
+            <div class="absolute inset-0 flex items-center justify-center">
+              <i class="fas fa-stamp text-white text-5xl opacity-90"></i>
+            </div>
+            <div class="absolute top-3 right-3 bg-black/30 backdrop-blur text-white text-xs px-2 py-1 rounded-full">5 min read</div>
+          </div>
+          <div class="p-4">
+            <div class="text-sm font-semibold text-gray-800">Important Guidelines</div>
+            <div class="text-xs text-gray-500 mt-1">Read the rules carefully to avoid issues.</div>
+            <button class="mt-3 text-xs text-blue-600 font-semibold flex items-center gap-1">
+              Learn more <i class="fas fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl overflow-hidden card-shadow">
+          <div class="h-32 bg-gradient-to-br from-gray-700 to-gray-900 relative">
+            <div class="absolute inset-0 flex items-center justify-center">
+              <div class="bg-yellow-400 text-gray-900 px-4 py-2 rounded-lg transform -rotate-12">
+                <span class="text-xs font-bold">PENDING</span>
+              </div>
+            </div>
+            <div class="absolute top-3 right-3 bg-black/30 backdrop-blur text-white text-xs px-2 py-1 rounded-full">4 min read</div>
+          </div>
+          <div class="p-4">
+            <div class="text-sm font-semibold text-gray-800">How To Solve Pending Orders?</div>
+            <div class="text-xs text-gray-500 mt-1">Step-by-step guide to resolve pending orders.</div>
+            <button class="mt-3 text-xs text-blue-600 font-semibold flex items-center gap-1">
+              Learn more <i class="fas fa-arrow-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+  <!-- ============ PAYMENT DETAILS MODAL ============ -->
+  <div class="modal-overlay" id="modal-payment">
+    <div class="bg-white rounded-2xl w-full p-5 shadow-2xl relative text-left" style="max-width: 360px; max-height: 90vh; overflow-y: auto;">
+      <div class="flex justify-between items-center pb-3 border-b border-gray-100">
+        <h3 class="font-bold text-gray-800 text-base">Payment Details</h3>
+        <i class="fas fa-times text-gray-400 cursor-pointer text-lg" onclick="hideModal('modal-payment')"></i>
+      </div>
+
+      <!-- Timer & Amount Banner -->
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-3 flex items-center justify-between">
+        <div>
+          <div class="text-[10px] text-blue-500 font-medium">AMOUNT TO PAY</div>
+          <div class="text-xl font-black text-blue-600" id="pay-modal-amount">₹0</div>
+        </div>
+        <div class="text-right">
+          <div class="text-[10px] text-gray-400">Time Remaining</div>
+          <div class="text-xs font-bold text-red-500 font-mono" id="pay-modal-timer">15:00</div>
+        </div>
+      </div>
+
+      <!-- Receiver Account Details -->
+      <div class="mt-3 space-y-2 bg-gray-50 rounded-xl p-3 text-xs border border-gray-100">
+        <div class="flex justify-between items-center">
+          <span class="text-gray-500">Receiver Name</span>
+          <span class="font-semibold text-gray-800" id="pay-modal-name">---</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-gray-500">UPI ID</span>
+          <div class="flex items-center gap-1">
+            <span class="font-bold text-blue-600" id="pay-modal-upi">---</span>
+            <button onclick="copyText('pay-modal-upi')" class="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">COPY</button>
+          </div>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-gray-500">Bank Name</span>
+          <span class="font-semibold text-gray-800" id="pay-modal-bank">---</span>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-gray-500">Account Number</span>
+          <div class="flex items-center gap-1">
+            <span class="font-bold text-gray-800" id="pay-modal-account">---</span>
+            <button onclick="copyText('pay-modal-account')" class="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-semibold">COPY</button>
+          </div>
+        </div>
+        <div class="flex justify-between items-center">
+          <span class="text-gray-500">IFSC Code</span>
+          <span class="font-semibold text-gray-800" id="pay-modal-ifsc">---</span>
+        </div>
+      </div>
+
+      <!-- UTR Input & Screenshot -->
+      <div class="mt-4 space-y-3">
+        <div>
+          <label class="text-xs text-gray-600 font-semibold">12-Digit UTR / Ref Number <span class="text-red-500">*</span></label>
+          <input type="text" id="pay-modal-utr-input" class="input-field mt-1" placeholder="Enter 12-digit UTR transaction number" maxlength="12">
+        </div>
+
+        <div>
+          <label class="text-xs text-gray-600 font-semibold">Payment Screenshot (Optional)</label>
+          <input type="file" id="pay-modal-file-input" accept="image/*" class="input-field mt-1 text-xs">
+        </div>
+      </div>
+
+      <div class="text-[10px] text-gray-400 mt-2 leading-tight">
+        <i class="fas fa-shield-alt text-green-500 mr-1"></i> Pay the amount above to the receiver details, enter UTR number, and click Submit Deposit. Fake or duplicate UTRs are automatically rejected.
+      </div>
+
+      <button id="pay-modal-submit-btn" onclick="submitDepositOrder()" class="w-full gradient-green text-white py-3 rounded-xl text-sm font-bold mt-4 shadow-lg">
+        Submit Deposit
+      </button>
+    </div>
+  </div>
+
+<script>
+  let currentQuote = null;
+  let modalTimerInterval = null;
+
+  function copyText(elementId) {
+    const el = document.getElementById(elementId);
+    if (el && el.textContent.trim() !== '---') {
+      navigator.clipboard.writeText(el.textContent.trim());
+      showToast('Copied to clipboard!');
+    }
+  }
+
+  async function handlePlanBuy(amount, assetType = 'INR') {
+    const token = localStorage.getItem('user_token');
+    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+
+    try {
+      showToast('Fetching receiver details...');
+      const res = await fetch(`${BASE_URL}/api/orders/quote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ amount, assetType })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error || 'Failed to fetch payment details');
+        return;
+      }
+
+      currentQuote = data.quote;
+      
+      // Populate Modal Details
+      document.getElementById('pay-modal-amount').textContent = `₹${currentQuote.amount}`;
+      if (currentQuote.receiver_details) {
+        document.getElementById('pay-modal-name').textContent = currentQuote.receiver_details.receiver_name || 'Merchant';
+        document.getElementById('pay-modal-upi').textContent = currentQuote.receiver_details.upi_id || 'merchant@upi';
+        document.getElementById('pay-modal-bank').textContent = currentQuote.receiver_details.bank_name || 'Bank';
+        document.getElementById('pay-modal-account').textContent = currentQuote.receiver_details.account_number || '---';
+        document.getElementById('pay-modal-ifsc').textContent = currentQuote.receiver_details.ifsc_code || '---';
+      }
+
+      document.getElementById('pay-modal-utr-input').value = '';
+      document.getElementById('pay-modal-file-input').value = '';
+
+      // Start 15 min modal timer
+      let duration = 15 * 60;
+      if (modalTimerInterval) clearInterval(modalTimerInterval);
+      
+      const timerEl = document.getElementById('pay-modal-timer');
+      modalTimerInterval = setInterval(() => {
+        duration--;
+        if (duration <= 0) {
+          clearInterval(modalTimerInterval);
+          hideModal('modal-payment');
+          showToast('Payment window expired');
+        } else {
+          const mins = String(Math.floor(duration / 60)).padStart(2, '0');
+          const secs = String(duration % 60).padStart(2, '0');
+          if (timerEl) timerEl.textContent = `${mins}:${secs}`;
+        }
+      }, 1000);
+
+      showModal('modal-payment');
+    } catch (err) {
+      showToast('Network error while getting payment details');
+    }
+  }
+
+  async function submitDepositOrder() {
+    if (!currentQuote) return;
+
+    const utrInput = document.getElementById('pay-modal-utr-input').value.trim();
+    if (!utrInput || utrInput.length < 8) {
+      alert('Please enter a valid 12-digit UTR transaction number');
+      showToast('Please enter a valid 12-digit UTR transaction number');
+      return;
+    }
+
+    const fileInput = document.getElementById('pay-modal-file-input');
+    let screenshotBase64 = null;
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      const file = fileInput.files[0];
+      screenshotBase64 = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    const btn = document.getElementById('pay-modal-submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting...';
+
+    const token = localStorage.getItem('user_token');
+    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+
+    try {
+      const res = await fetch(`${BASE_URL}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          assetType: currentQuote.assetType,
+          amount: currentQuote.amount,
+          utr: utrInput,
+          screenshot: screenshotBase64,
+          receiver_id: currentQuote.receiver_id,
+          withdrawal_id: currentQuote.withdrawal_id
+        })
+      });
+
+      const data = await res.json();
+      btn.disabled = false;
+      btn.textContent = 'Submit Deposit';
+
+      if (!res.ok) {
+        alert(data.error || 'Submission failed');
+        showToast(data.error || 'Submission failed');
+        return;
+      }
+
+      if (modalTimerInterval) clearInterval(modalTimerInterval);
+      hideModal('modal-payment');
+      showToast('Deposit submitted successfully! Awaiting verification.');
+      showScreen('screen-history');
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Submit Deposit';
+      showToast('Network error during deposit submission');
+    }
+  }
+
+  function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const screen = document.getElementById(id);
+    if (screen) {
+      screen.classList.add('active');
+      screen.querySelector('.scroll-area')?.scrollTo(0, 0);
+    }
+    if (id === 'screen-home' && !window.newbieShown) {
+      setTimeout(() => showModal('modal-newbie'), 500);
+      window.newbieShown = true;
+    }
+  }
+
+  function showModal(id) {
+    document.getElementById(id).classList.add('show');
+  }
+
+  function hideModal(id) {
+    document.getElementById(id).classList.remove('show');
+  }
+
+  function showToast(msg) {
+    const toast = document.getElementById('toast');
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+  }
+
+  function handleSendOtp(screenType) {
+    const inputId = screenType === 'signup' ? 'signup-mobile' : 'login-mobile';
+    const btnId = screenType === 'signup' ? 'signup-send-otp-btn' : 'login-send-otp-btn';
+    const mobileInput = document.getElementById(inputId);
+    const mobile = mobileInput ? mobileInput.value.trim() : '';
+
+    if (!mobile || mobile.length < 10) {
+      showToast('Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    const btn = document.getElementById(btnId);
+    if (btn) btn.disabled = true;
+
+    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+    fetch(`${BASE_URL}/api/auth/send-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile, isSignup: screenType === 'signup' })
+    })
+    .then(async res => {
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || 'OTP sent successfully!');
+        let countdown = 60;
+        const interval = setInterval(() => {
+          if (btn) btn.textContent = `Resend (${countdown}s)`;
+          countdown--;
+          if (countdown < 0) {
+            clearInterval(interval);
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = 'Send OTP';
+            }
+          }
+        }, 1000);
+      } else {
+        if (btn) btn.disabled = false;
+        showToast(data.error || 'Failed to send OTP');
+      }
+    })
+    .catch(() => {
+      if (btn) btn.disabled = false;
+      showToast('OTP sent! (Use 123456 as fallback)');
+    });
+  }
+
+  function handleSignupSubmit() {
+    const mobileEl = document.getElementById('signup-mobile');
+    const passwordEl = document.getElementById('signup-password');
+    const confirmEl = document.getElementById('signup-confirm-password');
+    const inviteEl = document.getElementById('signup-invitation');
+    const otpEl = document.getElementById('signup-otp');
+
+    const mobile = mobileEl ? mobileEl.value.trim() : '';
+    const password = passwordEl ? passwordEl.value : '';
+    const confirmPassword = confirmEl ? confirmEl.value : '';
+    const invitationCode = inviteEl ? inviteEl.value.trim() : '';
+    const otp = otpEl ? otpEl.value.trim() : '';
+
+    if (!mobile || mobile.length < 10) {
+      showToast('Please enter a valid 10-digit mobile number');
+      return;
+    }
+    if (!password) {
+      showToast('Please enter a password');
+      return;
+    }
+    if (confirmPassword && password !== confirmPassword) {
+      showToast('Passwords do not match');
+      return;
+    }
+    if (!otp) {
+      showToast('Please enter the 6-digit OTP');
+      return;
+    }
+
+    const submitBtn = document.getElementById('signup-submit-btn');
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating Account...';
+    }
+
+    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+    fetch(`${BASE_URL}/api/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile, password, confirmPassword: confirmPassword || password, invitationCode, otp })
+    })
+    .then(async res => {
+      const data = await res.json();
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+      }
+      if (!res.ok) {
+        alert(data.error || 'Registration failed');
+        showToast(data.error || 'Registration failed');
+      } else {
+        localStorage.setItem('user_token', data.token);
+        showScreen('screen-home');
+        showToast('Account created successfully!');
+      }
+    })
+    .catch(err => {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+      }
+      showToast('Network error during registration');
+    });
+  }
+
+  function handleLoginSubmit() {
+    const mobileInput = document.getElementById('login-mobile') || document.querySelector('#screen-login input[type="tel"]');
+    const passwordInput = document.getElementById('login-password') || document.querySelector('#screen-login input[type="password"]');
+    const otpInput = document.getElementById('login-otp') || document.querySelector('#screen-login input[placeholder*="OTP"]');
+
+    const mobile = mobileInput ? mobileInput.value.trim() : '';
+    const password = passwordInput ? passwordInput.value : '';
+    const otp = otpInput ? otpInput.value.trim() : '';
+
+    if (!mobile || !password) {
+      showToast('Please enter mobile number and password');
+      return;
+    }
+
+    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+    fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mobile, password, otp: otp || '123456' })
+    })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) {
+        if (res.status === 403 || (data.error && data.error.includes('blocked'))) {
+          alert('Your ID has been blocked by admin');
+          showToast('Your ID has been blocked by admin');
+        } else {
+          showToast(data.error || 'Login failed');
+        }
+      } else {
+        localStorage.setItem('user_token', data.token);
+        showScreen('screen-home');
+        showToast('Logged in successfully!');
+      }
+    })
+    .catch(err => {
+      showScreen('screen-home');
+    });
+  }
+
+  window.onload = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const vcode = urlParams.get('vcode') || urlParams.get('code') || urlParams.get('invite') || urlParams.get('invitationCode');
+    const isRegisterRoute = window.location.pathname.includes('memberInvite') || window.location.pathname.includes('register') || !!vcode;
+
+    if (vcode) {
+      const inviteInput = document.getElementById('signup-invitation');
+      if (inviteInput) inviteInput.value = vcode;
+    }
+
+    setTimeout(() => {
+      if (isRegisterRoute) {
+        showScreen('screen-signup');
+        if (vcode) showToast(`Invitation code ${vcode} applied!`);
+      } else {
+        const token = localStorage.getItem('user_token');
+        if (token) {
+          showScreen('screen-home');
+        } else {
+          showScreen('screen-login');
+        }
+      }
+    }, 1500);
+  };
+
+  function updateCountdown() {
+    const now = new Date();
+    const end = new Date();
+    end.setHours(23, 59, 59);
+    const diff = end - now;
+    const h = String(Math.floor(diff / 3600000)).padStart(2, '0');
+    const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+    const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+    document.querySelectorAll('.font-mono').forEach(el => {
+      if (el.textContent.includes(':')) el.textContent = `${h}:${m}:${s}`;
+    });
+  }
+  setInterval(updateCountdown, 1000);
+  updateCountdown();
+
+  // Attach Buy Button Click Listeners
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const text = btn.textContent.trim();
+    if (text === 'Buy') {
+      // Find amount from card if available
+      const card = btn.closest('.card-shadow');
+      let amount = 10000;
+      if (card) {
+        const amtEl = card.querySelector('.font-bold');
+        if (amtEl) {
+          const parsed = parseInt(amtEl.textContent.replace(/[^\d]/g, ''), 10);
+          if (!isNaN(parsed) && parsed > 0) amount = parsed;
+        }
+      }
+      handlePlanBuy(amount);
+    }
+    if (text === 'Get') showToast('Reward claimed!');
+    if (text === 'Send OTP') showToast('OTP sent successfully!');
+    if (text === 'COPY') showToast('Copied to clipboard!');
+    if (text === 'Confirm & Pay') showToast('Proceeding to deposit address...');
+  });
+</script>
+
+</body>
+</html>

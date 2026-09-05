@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Airwallex</string>
+    <string name="title_activity_main">Airwallex</string>
+    <string name="package_name">com.airwallex.app</string>
+    <string name="custom_url_scheme">com.airwallex.app</string>
+</resources>
+
