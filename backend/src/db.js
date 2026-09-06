@@ -19,13 +19,17 @@ if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
   }
 }
 
-const dataDir = path.join(__dirname, '../data');
+const dataDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../data');
 const dbPath = process.env.DATABASE_PATH || path.join(dataDir, 'database.json');
 
 // Ensure database parent directory exists
 const dbDir = path.dirname(dbPath);
 if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
+  try {
+    fs.mkdirSync(dbDir, { recursive: true });
+  } catch (e) {
+    console.error('Directory creation skipped/failed:', e.message);
+  }
 }
 
 // In-memory representation of our database tables

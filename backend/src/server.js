@@ -41,12 +41,23 @@ const path = require('path');
 const fs = require('fs');
 
 // Static serving for uploaded screenshots/files
-const uploadsDir = path.join(__dirname, '../public/uploads');
+const uploadsDir = process.env.VERCEL ? '/tmp/uploads' : path.join(__dirname, '../public/uploads');
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  try {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  } catch (e) {}
 }
 app.use('/uploads', express.static(uploadsDir));
 app.use('/api/uploads', express.static(uploadsDir));
+
+// Root Health Check Routes for Vercel
+app.get('/', (req, res) => {
+  return res.json({ success: true, message: 'TpayX Backend API Serverless is Running!', status: 'OK' });
+});
+
+app.get('/api/health', (req, res) => {
+  return res.json({ success: true, status: 'OK', timestamp: new Date().toISOString() });
+});
 
 // Route to view image proof bypassing Nginx static extensions intercepts
 app.get('/api/view-image', (req, res) => {
@@ -1474,60 +1485,69 @@ app.post('/api/admin/rotation-config', adminAuth, (req, res) => {
   return res.json({ success: true, config: autoPlanConfig, message: 'Auto-rotation config updated!' });
 });
 
-// --- STARTUP AND DATABASE INIT ---
-(async () => {
+// --- CRON ROUTES FOR VERCEL SERVERLESS ---
+app.get('/api/cron/auto-rotate', async (req, res) => {
   try {
-    console.log('Initializing SQLite database schemas...');
-    await initDb();
-    console.log('Database initialized and seeded.');
+    await runPlanRotation();
+    return res.json({ success: true, message: 'Auto plan rotation executed via Vercel Cron' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
-    // Vercel Cron Job Route: Auto Plan Rotation
-    app.get('/api/cron/auto-rotate', async (req, res) => {
-      try {
-        await runPlanRotation();
-        return res.json({ success: true, message: 'Auto plan rotation executed via Vercel Cron' });
-      } catch (err) {
-        return res.status(500).json({ error: err.message });
-      }
-    });
-
-    // Vercel Cron Job Route: Order Countdown Cleanup
-    app.get('/api/cron/order-cleanup', async (req, res) => {
-      try {
-        const now = Date.now();
-        let cleaned = 0;
-        if (Array.isArray(dbData.orders)) {
-          dbData.orders.forEach(o => {
-            if (o.status === 'CONFIRMING' || o.status === 'PENDING') {
-              const created = new Date(o.created_at || o.timestamp).getTime();
-              if (now - created >= 15 * 60 * 1000) {
-                o.status = 'EXPIRED';
-                cleaned++;
-              }
-            }
-          });
-          if (cleaned > 0) await saveDb();
+app.get('/api/cron/order-cleanup', async (req, res) => {
+  try {
+    const now = Date.now();
+    let cleaned = 0;
+    if (Array.isArray(dbData.orders)) {
+      dbData.orders.forEach(o => {
+        if (o.status === 'CONFIRMING' || o.status === 'PENDING') {
+          const created = new Date(o.created_at || o.timestamp).getTime();
+          if (now - created >= 15 * 60 * 1000) {
+            o.status = 'EXPIRED';
+            cleaned++;
+          }
         }
-        return res.json({ success: true, cleanedOrders: cleaned, message: 'Order cleanup executed via Vercel Cron' });
-      } catch (err) {
-        return res.status(500).json({ error: err.message });
-      }
-    });
+      });
+      if (cleaned > 0) await saveDb();
+    }
+    return res.json({ success: true, cleanedOrders: cleaned, message: 'Order cleanup executed via Vercel Cron' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
-    // Start auto plan rotation (every 2 minutes in long-running mode)
-    if (!process.env.VERCEL) {
+// Middleware to ensure DB is initialized on cold-start in Vercel
+let dbInitialized = false;
+app.use(async (req, res, next) => {
+  if (!dbInitialized) {
+    try {
+      await initDb();
+      dbInitialized = true;
+    } catch (err) {
+      console.error('[DB Init Middleware Error]:', err.message);
+    }
+  }
+  next();
+});
+
+// --- STARTUP IN LONG-RUNNING MODE ---
+if (!process.env.VERCEL) {
+  (async () => {
+    try {
+      await initDb();
+      dbInitialized = true;
       setInterval(runPlanRotation, autoPlanConfig.intervalMinutes * 60 * 1000);
       console.log(`[AutoPlan] Auto plan rotation started — every ${autoPlanConfig.intervalMinutes} min, keeping ${autoPlanConfig.minTotal}–${autoPlanConfig.maxTotal} plans.`);
 
       app.listen(PORT, () => {
         console.log(`TpayX Backend API running at http://localhost:${PORT}`);
       });
+    } catch (err) {
+      console.error('Failed to boot application:', err);
     }
-  } catch (err) {
-    console.error('Failed to boot application:', err);
-    process.exit(1);
-  }
-})();
+  })();
+}
 
 // Export app for Vercel Serverless Functions & Testing
 module.exports = app;
