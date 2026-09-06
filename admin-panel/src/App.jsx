@@ -7,7 +7,8 @@ import MessageManager from './components/MessageManager';
 import SettingsManager from './components/SettingsManager';
 import DisputeManager from './components/DisputeManager';
 
-const API_BASE = `${import.meta.env.VITE_API_URL || '/api'}/admin`;
+const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+const API_BASE = rawApiUrl.endsWith('/api') ? `${rawApiUrl}/admin` : `${rawApiUrl}/api/admin`;
 
 // Live 15-Minute Countdown Timer Component for Deposit Orders Queue
 const OrderTimer = ({ createdAt, timerExpiry, status }) => {
