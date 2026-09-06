@@ -354,11 +354,28 @@ function repairWithdrawalTransactionTypes() {
   }
 }
 
-// Load helper
+const defaultSeedPath = path.join(__dirname, '../data/database.json');
+
 function loadDb() {
-  if (fs.existsSync(dbPath)) {
+  let targetPath = dbPath;
+  if (!fs.existsSync(targetPath) && fs.existsSync(defaultSeedPath)) {
     try {
-      const parsed = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+      const data = fs.readFileSync(defaultSeedPath, 'utf8');
+      const targetDir = path.dirname(targetPath);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      fs.writeFileSync(targetPath, data, 'utf8');
+      console.log('[loadDb] Initialized /tmp database.json from defaultSeedPath successfully.');
+    } catch (err) {
+      console.error('[loadDb] Seed copy failed:', err.message);
+      targetPath = defaultSeedPath;
+    }
+  }
+
+  if (fs.existsSync(targetPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
       if (parsed.dbData) {
         for (let key in dbData) delete dbData[key];
         Object.assign(dbData, parsed.dbData);
