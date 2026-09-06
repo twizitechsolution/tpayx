@@ -40,15 +40,46 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 const path = require('path');
 const fs = require('fs');
 
-// Static serving for uploaded screenshots/files
-const uploadsDir = process.env.VERCEL ? '/tmp/uploads' : path.join(__dirname, '../public/uploads');
-if (!fs.existsSync(uploadsDir)) {
-  try {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  } catch (e) {}
+// Static serving for uploaded screenshots/files & static public assets
+const staticUploadsDir = path.join(__dirname, '../public/uploads');
+const staticPublicDir = path.join(__dirname, '../public');
+const tmpUploadsDir = '/tmp/uploads';
+
+if (!fs.existsSync(staticUploadsDir)) {
+  try { fs.mkdirSync(staticUploadsDir, { recursive: true }); } catch (e) {}
 }
-app.use('/uploads', express.static(uploadsDir));
-app.use('/api/uploads', express.static(uploadsDir));
+
+app.use('/uploads', express.static(staticUploadsDir));
+app.use('/api/uploads', express.static(staticUploadsDir));
+app.use(express.static(staticPublicDir));
+
+if (process.env.VERCEL) {
+  if (!fs.existsSync(tmpUploadsDir)) {
+    try { fs.mkdirSync(tmpUploadsDir, { recursive: true }); } catch (e) {}
+  }
+  app.use('/uploads', express.static(tmpUploadsDir));
+  app.use('/api/uploads', express.static(tmpUploadsDir));
+}
+
+// Dedicated Handler for APK Downloads (ensures serverless serves TpayX.apk correctly)
+app.get(['/uploads/TpayX.apk', '/uploads/Airwallex.apk', '/TpayX.apk', '/Airwallex.apk', '/api/uploads/TpayX.apk', '/api/uploads/Airwallex.apk'], (req, res) => {
+  const tmpApk = path.join(tmpUploadsDir, 'TpayX.apk');
+  const staticUploadsApk = path.join(staticUploadsDir, 'TpayX.apk');
+  const staticPublicApk = path.join(staticPublicDir, 'TpayX.apk');
+  const rootApk = path.join(__dirname, '../../TpayX.apk');
+
+  const apkPath = fs.existsSync(tmpApk) ? tmpApk :
+                  fs.existsSync(staticUploadsApk) ? staticUploadsApk :
+                  fs.existsSync(staticPublicApk) ? staticPublicApk :
+                  fs.existsSync(rootApk) ? rootApk : null;
+
+  if (apkPath) {
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+    res.setHeader('Content-Disposition', 'attachment; filename="TpayX.apk"');
+    return res.sendFile(apkPath);
+  }
+  return res.status(404).json({ success: false, error: 'TpayX APK file not found on server' });
+});
 
 // Root Health Check Routes for Vercel
 app.get('/', (req, res) => {
