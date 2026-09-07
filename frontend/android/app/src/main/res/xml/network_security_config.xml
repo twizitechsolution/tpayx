@@ -7,7 +7,7 @@
         </trust-anchors>
     </base-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain>airwallexus.online</domain>
+        <domain>tpayx-backend.vercel.app</domain>
         <domain includeSubdomains="true">localhost</domain>
     </domain-config>
 </network-security-config>

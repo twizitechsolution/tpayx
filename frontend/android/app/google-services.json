@@ -1,15 +1,15 @@
 {
   "project_info": {
     "project_number": "455907277585",
-    "project_id": "airwallex-payments-e0982",
-    "storage_bucket": "airwallex-payments-e0982.firebasestorage.app"
+    "project_id": "tpayx-app",
+    "storage_bucket": "tpayx-app.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
         "mobilesdk_app_id": "1:455907277585:android:c187aa5d552a2a3ab1eab0",
         "android_client_info": {
-          "package_name": "com.airwallex.app"
+          "package_name": "com.tpayx.app"
         }
       },
       "oauth_client": [],
