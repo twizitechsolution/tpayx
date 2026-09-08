@@ -3,13 +3,44 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>TpayX - Fast. Secure. Simple.</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script type="module" crossorigin src="/assets/index-CVMZi8sX.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-CKXErF3w.css">
-  </head>
+  
+<style>
+  :root {
+    --sat: env(safe-area-inset-top, 24px);
+    --sab: env(safe-area-inset-bottom, 16px);
+  }
+  html, body {
+    background: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+  .phone-frame {
+    width: 100vw !important;
+    max-width: 100% !important;
+    height: calc(100vh - var(--sat) - var(--sab)) !important;
+    height: calc(100dvh - var(--sat) - var(--sab)) !important;
+    margin-top: var(--sat) !important;
+    margin-bottom: var(--sab) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .nav-bar {
+    padding-bottom: max(16px, var(--sab)) !important;
+    height: calc(65px + var(--sab)) !important;
+  }
+</style>
+
+</head>
   <body class="flex items-center justify-center min-h-screen bg-[#eef1f5]">
     <div id="root" class="w-full flex items-center justify-center min-h-screen"></div>
   </body>

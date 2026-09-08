@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>TpayX - Fast. Secure. Simple.</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-Txesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
@@ -133,6 +133,37 @@
     background-size: 30px 30px;
   }
 </style>
+
+<style>
+  :root {
+    --sat: env(safe-area-inset-top, 24px);
+    --sab: env(safe-area-inset-bottom, 16px);
+  }
+  html, body {
+    background: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
+  .phone-frame {
+    width: 100vw !important;
+    max-width: 100% !important;
+    height: calc(100vh - var(--sat) - var(--sab)) !important;
+    height: calc(100dvh - var(--sat) - var(--sab)) !important;
+    margin-top: var(--sat) !important;
+    margin-bottom: var(--sab) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .nav-bar {
+    padding-bottom: max(16px, var(--sab)) !important;
+    height: calc(65px + var(--sab)) !important;
+  }
+</style>
+
 </head>
 <body class="flex items-center justify-center min-h-screen">
 
@@ -288,16 +319,16 @@
         <div class="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-blue-600 opacity-20"></div>
         <div class="absolute -right-12 -bottom-12 w-40 h-40 rounded-full bg-blue-600 opacity-10"></div>
         <div class="relative">
-          <div class="text-xs text-gray-400">Total Assets (â‚¹)</div>
+          <div class="text-xs text-gray-400">Total Assets (₹)</div>
           <div class="text-3xl font-bold mt-1">10,866.05</div>
           <div class="flex gap-4 mt-4 text-xs">
             <div>
               <div class="text-gray-400">Today's Profit</div>
-              <div class="font-semibold mt-0.5 text-blue-400">â‚° 0.00</div>
+              <div class="font-semibold mt-0.5 text-blue-400">₹ 0.00</div>
             </div>
             <div>
               <div class="text-gray-400">Total Earnings</div>
-              <div class="font-semibold mt-0.5">â‚¹ 10,751.28</div>
+              <div class="font-semibold mt-0.5">₹ 10,751.28</div>
             </div>
           </div>
         </div>
@@ -338,7 +369,7 @@
         <div class="flex items-center justify-between mb-3">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-lg gradient-green flex items-center justify-center">
-              <span class="text-white text-xs font-bold">â‚¹</span>
+              <span class="text-white text-xs font-bold">₹</span>
             </div>
             <span class="font-semibold text-gray-800">Buy Rupee</span>
           </div>
@@ -347,7 +378,7 @@
         <div class="bg-gray-50 rounded-xl p-3 flex items-center justify-between">
           <div>
             <div class="text-xs text-gray-500">Example</div>
-            <div class="text-sm text-gray-700 mt-1">Pay <span class="font-semibold">â‚¹10000</span> â†’ Receive <span class="font-semibold text-green-600">â‚¹10256</span></div>
+            <div class="text-sm text-gray-700 mt-1">Pay <span class="font-semibold">₹10000</span> â†’ Receive <span class="font-semibold text-green-600">₹10256</span></div>
           </div>
           <button onclick="showScreen('screen-buy')" class="gradient-green text-white px-4 py-2 rounded-full text-xs font-semibold">Buy</button>
         </div>
@@ -406,10 +437,10 @@
           <i class="fas fa-money-bag-wave text-blue-600 text-3xl"></i>
         </div>
         <h3 class="text-xl font-bold text-gray-800">Newbie Bonus</h3>
-        <p class="text-sm text-gray-500 mt-2">Complete newbie tasks to earn â‚¹60 bonus</p>
+        <p class="text-sm text-gray-500 mt-2">Complete newbie tasks to earn ₹60 bonus</p>
         <div class="flex gap-3 mt-6">
           <button onclick="hideModal('modal-newbie')" class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-600 font-semibold text-sm">NOT NOW</button>
-          <button onclick="hideModal('modal-newbie'); showScreen('screen-newbie')" class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm">CLAIM â‚¹60</button>
+          <button onclick="hideModal('modal-newbie'); showScreen('screen-newbie')" class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold text-sm">CLAIM ₹60</button>
         </div>
       </div>
     </div>
@@ -465,11 +496,11 @@
           <div class="grid grid-cols-3 gap-2 mb-3">
             <div>
               <div class="text-[10px] text-gray-400">Amount</div>
-              <div class="text-sm font-bold text-gray-800 mt-0.5">â‚¹10000</div>
+              <div class="text-sm font-bold text-gray-800 mt-0.5">₹10000</div>
             </div>
             <div>
               <div class="text-[10px] text-gray-400">Income</div>
-              <div class="text-sm font-bold text-green-600 mt-0.5">â‚¹256</div>
+              <div class="text-sm font-bold text-green-600 mt-0.5">₹256</div>
             </div>
             <div>
               <div class="text-[10px] text-gray-400">Quota</div>
@@ -493,11 +524,11 @@
           <div class="grid grid-cols-3 gap-2 mb-3">
             <div>
               <div class="text-[10px] text-gray-400">Amount</div>
-              <div class="text-sm font-bold text-gray-800 mt-0.5">â‚¹14544</div>
+              <div class="text-sm font-bold text-gray-800 mt-0.5">₹14544</div>
             </div>
             <div>
               <div class="text-[10px] text-gray-400">Income</div>
-              <div class="text-sm font-bold text-green-600 mt-0.5">â‚¹369.6</div>
+              <div class="text-sm font-bold text-green-600 mt-0.5">₹369.6</div>
             </div>
             <div>
               <div class="text-[10px] text-gray-400">Quota</div>
@@ -558,17 +589,17 @@
 
         <div class="flex justify-between text-xs mt-3">
           <span class="text-gray-500">Exchange Rate</span>
-          <span class="text-gray-800 font-medium">1 USDT = â‚¹100</span>
+          <span class="text-gray-800 font-medium">1 USDT = ₹100</span>
         </div>
 
         <div class="flex justify-between text-xs mt-2">
           <span class="text-gray-500">Bonus (6.5%)</span>
-          <span class="text-green-600 font-medium">+â‚¹6.5</span>
+          <span class="text-green-600 font-medium">+₹6.5</span>
         </div>
 
         <div class="border-t border-gray-100 mt-3 pt-3 flex justify-between items-center">
           <span class="text-sm text-gray-700 font-medium">You will receive:</span>
-          <span class="text-xl font-bold text-blue-600">â‚¹106.5</span>
+          <span class="text-xl font-bold text-blue-600">₹106.5</span>
         </div>
 
         <button class="btn-primary mt-6">Confirm & Pay</button>
@@ -684,16 +715,16 @@
           </div>
           <div class="mt-4">
             <div class="text-xs text-gray-400">Total Earnings</div>
-            <div class="text-3xl font-bold mt-1">â‚¹10751.28</div>
+            <div class="text-3xl font-bold mt-1">₹10751.28</div>
           </div>
           <div class="flex gap-6 mt-4">
             <div>
               <div class="text-xs text-gray-400">Yesterday</div>
-              <div class="text-sm font-semibold mt-0.5">â‚¹620.23</div>
+              <div class="text-sm font-semibold mt-0.5">₹620.23</div>
             </div>
             <div>
               <div class="text-xs text-gray-400">Today</div>
-              <div class="text-sm font-semibold mt-0.5">â‚¹0.00</div>
+              <div class="text-sm font-semibold mt-0.5">₹0.00</div>
             </div>
           </div>
         </div>
@@ -704,17 +735,17 @@
         <div class="grid grid-cols-3 gap-2">
           <div class="bg-gray-50 rounded-xl p-3 text-center">
             <div class="text-xs text-gray-400">Level 1</div>
-            <div class="text-base font-bold text-blue-600 mt-1">â‚¹5.64</div>
+            <div class="text-base font-bold text-blue-600 mt-1">₹5.64</div>
             <div class="text-xs text-gray-500 mt-1">1 member</div>
           </div>
           <div class="bg-gray-50 rounded-xl p-3 text-center">
             <div class="text-xs text-gray-400">Level 2</div>
-            <div class="text-base font-bold text-gray-400 mt-1">â‚¹0.00</div>
+            <div class="text-base font-bold text-gray-400 mt-1">₹0.00</div>
             <div class="text-xs text-gray-500 mt-1">0 member</div>
           </div>
           <div class="bg-gray-50 rounded-xl p-3 text-center">
             <div class="text-xs text-gray-400">Level 3</div>
-            <div class="text-base font-bold text-gray-400 mt-1">â‚¹0.00</div>
+            <div class="text-base font-bold text-gray-400 mt-1">₹0.00</div>
             <div class="text-xs text-gray-500 mt-1">0 member</div>
           </div>
         </div>
@@ -734,7 +765,7 @@
             <div class="text-right">
               <div class="text-xs text-gray-400">Orders</div>
               <div class="text-sm font-semibold text-gray-800">+0</div>
-              <div class="text-xs text-gray-500 mt-0.5">â‚¹0.00</div>
+              <div class="text-xs text-gray-500 mt-0.5">₹0.00</div>
             </div>
           </div>
           <div class="text-center text-xs text-gray-400 py-3">No more members</div>
@@ -756,15 +787,15 @@
         <div class="grid grid-cols-3 gap-2 mt-4 text-xs">
           <div class="bg-gray-50 rounded-lg p-2">
             <div class="text-gray-400">Total</div>
-            <div class="font-bold text-gray-800 mt-1">â‚¹10751.28</div>
+            <div class="font-bold text-gray-800 mt-1">₹10751.28</div>
           </div>
           <div class="bg-gray-50 rounded-lg p-2">
             <div class="text-gray-400">Yesterday</div>
-            <div class="font-bold text-gray-800 mt-1">â‚¹620.23</div>
+            <div class="font-bold text-gray-800 mt-1">₹620.23</div>
           </div>
           <div class="bg-gray-50 rounded-lg p-2">
             <div class="text-gray-400">Today</div>
-            <div class="font-bold text-gray-800 mt-1">â‚¹0.00</div>
+            <div class="font-bold text-gray-800 mt-1">₹0.00</div>
           </div>
         </div>
 
@@ -841,15 +872,15 @@
           <div class="grid grid-cols-3 gap-2">
             <div class="text-center">
               <div class="text-xs text-gray-400">BCoin Balance</div>
-              <div class="text-base font-bold text-blue-600 mt-1">â‚¹115.77</div>
+              <div class="text-base font-bold text-blue-600 mt-1">₹115.77</div>
             </div>
             <div class="text-center border-l border-r border-gray-100">
               <div class="text-xs text-gray-400">Total Earnings</div>
-              <div class="text-base font-bold text-gray-800 mt-1">â‚¹10751.28</div>
+              <div class="text-base font-bold text-gray-800 mt-1">₹10751.28</div>
             </div>
             <div class="text-center">
               <div class="text-xs text-gray-400">Today's Profit</div>
-              <div class="text-base font-bold text-gray-800 mt-1">â‚°0</div>
+              <div class="text-base font-bold text-gray-800 mt-1">₹0</div>
             </div>
           </div>
         </div>
@@ -1015,13 +1046,13 @@
             <span class="text-xs text-gray-400">16/07/2026 22:39:40</span>
           </div>
           <div class="flex items-baseline justify-between mb-2">
-            <span class="text-2xl font-bold text-gray-800">â‚¹10000</span>
-            <span class="text-sm text-green-600 font-semibold">+â‚¹256</span>
+            <span class="text-2xl font-bold text-gray-800">₹10000</span>
+            <span class="text-sm text-green-600 font-semibold">+₹256</span>
           </div>
           <div class="flex justify-between items-center pt-3 border-t border-gray-50">
             <div>
               <div class="text-xs text-gray-400">Total</div>
-              <div class="text-sm font-semibold text-gray-800 mt-0.5">â‚¹10256</div>
+              <div class="text-sm font-semibold text-gray-800 mt-0.5">₹10256</div>
             </div>
             <div class="text-right">
               <div class="text-xs text-gray-400">Order ID</div>
@@ -1036,13 +1067,13 @@
             <span class="text-xs text-gray-400">16/07/2026 18:22:15</span>
           </div>
           <div class="flex items-baseline justify-between mb-2">
-            <span class="text-2xl font-bold text-gray-600">â‚¹10000</span>
-            <span class="text-sm text-gray-400 font-semibold line-through">+â‚¹256</span>
+            <span class="text-2xl font-bold text-gray-600">₹10000</span>
+            <span class="text-sm text-gray-400 font-semibold line-through">+₹256</span>
           </div>
           <div class="flex justify-between items-center pt-3 border-t border-gray-50">
             <div>
               <div class="text-xs text-gray-400">Total</div>
-              <div class="text-sm font-semibold text-gray-500 mt-0.5">â‚¹0</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">₹0</div>
             </div>
             <div class="text-right">
               <div class="text-xs text-gray-400">Order ID</div>
@@ -1065,7 +1096,7 @@
       <div class="px-5 mt-4 space-y-3 pb-4">
         <div class="bg-white rounded-2xl p-4 card-shadow">
           <div class="flex justify-between items-start mb-3">
-            <span class="text-xl font-bold text-gray-800">â‚¹299.94</span>
+            <span class="text-xl font-bold text-gray-800">₹299.94</span>
             <span class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">Success</span>
           </div>
           <div class="border-t border-gray-100 pt-3 space-y-1.5 text-xs text-gray-500">
@@ -1079,7 +1110,7 @@
 
         <div class="bg-white rounded-2xl p-4 card-shadow">
           <div class="flex justify-between items-start mb-3">
-            <span class="text-xl font-bold text-gray-800">â‚¹298.06</span>
+            <span class="text-xl font-bold text-gray-800">₹298.06</span>
             <span class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">Success</span>
           </div>
           <div class="border-t border-gray-100 pt-3 space-y-1.5 text-xs text-gray-500">
@@ -1093,7 +1124,7 @@
 
         <div class="bg-white rounded-2xl p-4 card-shadow">
           <div class="flex justify-between items-start mb-3">
-            <span class="text-xl font-bold text-gray-800">â‚¹6999.64</span>
+            <span class="text-xl font-bold text-gray-800">₹6999.64</span>
             <span class="text-xs bg-green-100 text-green-600 px-2 py-1 rounded-full font-medium">Success</span>
           </div>
           <div class="border-t border-gray-100 pt-3 space-y-1.5 text-xs text-gray-500">
@@ -1128,11 +1159,11 @@
           <div class="flex justify-between items-center pt-3 border-t border-gray-50">
             <div>
               <div class="text-xs text-gray-400">Reward</div>
-              <div class="text-sm font-semibold text-gray-500 mt-0.5">+â‚¹0</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">+₹0</div>
             </div>
             <div>
               <div class="text-xs text-gray-400">Received</div>
-              <div class="text-sm font-semibold text-gray-500 mt-0.5">â‚¹0</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">₹0</div>
             </div>
             <div class="text-right">
               <div class="text-xs text-gray-400">Order ID</div>
@@ -1152,11 +1183,11 @@
           <div class="flex justify-between items-center pt-3 border-t border-gray-50">
             <div>
               <div class="text-xs text-gray-400">Reward</div>
-              <div class="text-sm font-semibold text-gray-500 mt-0.5">+â‚¹0</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">+₹0</div>
             </div>
             <div>
               <div class="text-xs text-gray-400">Received</div>
-              <div class="text-sm font-semibold text-gray-500 mt-0.5">â‚¹0</div>
+              <div class="text-sm font-semibold text-gray-500 mt-0.5">₹0</div>
             </div>
             <div class="text-right">
               <div class="text-xs text-gray-400">Order ID</div>
@@ -1192,7 +1223,7 @@
             </div>
             <div class="text-right">
               <div class="text-sm font-bold text-red-500">-299.94 INR</div>
-              <div class="text-xs text-gray-400 mt-1">Bal: â‚¹10451.34</div>
+              <div class="text-xs text-gray-400 mt-1">Bal: ₹10451.34</div>
             </div>
           </div>
         </div>
@@ -1210,7 +1241,7 @@
             </div>
             <div class="text-right">
               <div class="text-sm font-bold text-green-500">+256.00 INR</div>
-              <div class="text-xs text-gray-400 mt-1">Bal: â‚¹10751.28</div>
+              <div class="text-xs text-gray-400 mt-1">Bal: ₹10751.28</div>
             </div>
           </div>
         </div>
@@ -1228,7 +1259,7 @@
             </div>
             <div class="text-right">
               <div class="text-sm font-bold text-green-500">+620.23 INR</div>
-              <div class="text-xs text-gray-400 mt-1">Bal: â‚¹10495.28</div>
+              <div class="text-xs text-gray-400 mt-1">Bal: ₹10495.28</div>
             </div>
           </div>
         </div>
@@ -1246,7 +1277,7 @@
             </div>
             <div class="text-right">
               <div class="text-sm font-bold text-red-500">-500.00 INR</div>
-              <div class="text-xs text-gray-400 mt-1">Bal: â‚¹9875.05</div>
+              <div class="text-xs text-gray-400 mt-1">Bal: ₹9875.05</div>
             </div>
           </div>
         </div>
@@ -1373,11 +1404,11 @@
       <div class="mx-5 mt-4 grid grid-cols-2 gap-3">
         <div class="bg-white rounded-2xl p-4 card-shadow">
           <div class="text-xs text-gray-400">Event Recharge</div>
-          <div class="text-xl font-bold text-gray-800 mt-1">â‚¹0</div>
+          <div class="text-xl font-bold text-gray-800 mt-1">₹0</div>
         </div>
         <div class="bg-white rounded-2xl p-4 card-shadow">
           <div class="text-xs text-gray-400">Claimable Reward</div>
-          <div class="text-xl font-bold text-blue-600 mt-1">â‚¹0</div>
+          <div class="text-xl font-bold text-blue-600 mt-1">₹0</div>
         </div>
       </div>
 
@@ -1490,7 +1521,7 @@
       <div class="mx-5 mt-3 bg-white rounded-2xl p-4 card-shadow">
         <div class="flex items-center gap-2 mb-4">
           <div class="w-8 h-8 rounded-lg gradient-green flex items-center justify-center">
-            <span class="text-white text-xs font-bold">â‚¹</span>
+            <span class="text-white text-xs font-bold">₹</span>
           </div>
           <span class="font-semibold text-gray-800">INR Daily Bonus</span>
         </div>
@@ -1502,7 +1533,7 @@
           </div>
           <div class="bg-gray-50 rounded-xl p-3">
             <div class="text-xs text-gray-400">Expected Reward</div>
-            <div class="text-lg font-bold text-green-600 mt-1">â‚¹0</div>
+            <div class="text-lg font-bold text-green-600 mt-1">₹0</div>
           </div>
         </div>
 
@@ -1704,7 +1735,7 @@
       <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-3 flex items-center justify-between">
         <div>
           <div class="text-[10px] text-blue-500 font-medium">AMOUNT TO PAY</div>
-          <div class="text-xl font-black text-blue-600" id="pay-modal-amount">â‚¹0</div>
+          <div class="text-xl font-black text-blue-600" id="pay-modal-amount">₹0</div>
         </div>
         <div class="text-right">
           <div class="text-[10px] text-gray-400">Time Remaining</div>
@@ -1801,7 +1832,7 @@
       currentQuote = data.quote;
       
       // Populate Modal Details
-      document.getElementById('pay-modal-amount').textContent = `â‚¹${currentQuote.amount}`;
+      document.getElementById('pay-modal-amount').textContent = `₹${currentQuote.amount}`;
       if (currentQuote.receiver_details) {
         document.getElementById('pay-modal-name').textContent = currentQuote.receiver_details.receiver_name || 'Merchant';
         document.getElementById('pay-modal-upi').textContent = currentQuote.receiver_details.upi_id || 'merchant@upi';
