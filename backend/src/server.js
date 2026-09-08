@@ -90,6 +90,20 @@ app.get('/api/health', (req, res) => {
   return res.json({ success: true, status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Dedicated Handler for Web Registration & Member Invite Links
+app.get(['/memberInvite', '/memberInvite.html', '/api/memberInvite'], (req, res) => {
+  const staticPublicInv = path.join(staticPublicDir, 'invapp.html');
+  const rootInv = path.join(__dirname, '../../invapp.html');
+  const invPath = fs.existsSync(staticPublicInv) ? staticPublicInv :
+                  fs.existsSync(rootInv) ? rootInv : null;
+
+  if (invPath) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.sendFile(invPath);
+  }
+  return res.status(404).send('Invitation page not found');
+});
+
 // Route to view image proof bypassing Nginx static extensions intercepts
 app.get('/api/view-image', (req, res) => {
   try {
