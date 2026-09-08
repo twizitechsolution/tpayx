@@ -91,17 +91,19 @@ app.get('/api/health', (req, res) => {
 });
 
 // Dedicated Handler for Web Registration & Member Invite Links
-app.get(['/memberInvite', '/memberInvite.html', '/api/memberInvite'], (req, res) => {
-  const staticPublicInv = path.join(staticPublicDir, 'invapp.html');
-  const rootInv = path.join(__dirname, '../../invapp.html');
-  const invPath = fs.existsSync(staticPublicInv) ? staticPublicInv :
-                  fs.existsSync(rootInv) ? rootInv : null;
+app.use((req, res, next) => {
+  if (req.url.includes('memberInvite') || req.path.includes('memberInvite')) {
+    const staticPublicInv = path.join(staticPublicDir, 'invapp.html');
+    const rootInv = path.join(__dirname, '../../invapp.html');
+    const invPath = fs.existsSync(staticPublicInv) ? staticPublicInv :
+                    fs.existsSync(rootInv) ? rootInv : null;
 
-  if (invPath) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.sendFile(invPath);
+    if (invPath) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.sendFile(invPath);
+    }
   }
-  return res.status(404).send('Invitation page not found');
+  next();
 });
 
 // Route to view image proof bypassing Nginx static extensions intercepts

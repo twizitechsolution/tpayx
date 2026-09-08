@@ -1,5 +1,11 @@
 {
   "version": 2,
+  "routes": [
+    {
+      "src": "/memberInvite(.*)",
+      "dest": "/api/index.js"
+    }
+  ],
   "rewrites": [
     {
       "source": "/(.*)",
