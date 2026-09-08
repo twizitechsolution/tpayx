@@ -10,11 +10,8 @@
     <script type="module" crossorigin src="/assets/index-CVMZi8sX.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-CKXErF3w.css">
   
+
 <style>
-  :root {
-    --sat: env(safe-area-inset-top, 24px);
-    --sab: env(safe-area-inset-bottom, 16px);
-  }
   html, body {
     background: #0f172a !important;
     margin: 0 !important;
@@ -27,18 +24,25 @@
   .phone-frame {
     width: 100vw !important;
     max-width: 100% !important;
-    height: calc(100vh - var(--sat) - var(--sab)) !important;
-    height: calc(100dvh - var(--sat) - var(--sab)) !important;
-    margin-top: var(--sat) !important;
-    margin-bottom: var(--sab) !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
   }
   .nav-bar {
-    padding-bottom: max(16px, var(--sab)) !important;
-    height: calc(65px + var(--sab)) !important;
+    height: 60px !important;
+    min-height: 60px !important;
+    max-height: 60px !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    background: #ffffff !important;
+    border-top: 1px solid #f1f5f9 !important;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.05) !important;
   }
 </style>
+
 
 </head>
   <body class="flex items-center justify-center min-h-screen bg-[#eef1f5]">
