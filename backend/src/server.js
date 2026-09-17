@@ -3,7 +3,7 @@ dotenv.config();
 
 const express = require('express');
 const cors = require('cors');
-const { initDb, query, dbData, idTrackers, saveDb, loadDb } = require('./db');
+const { initDb, query, dbData, idTrackers, saveDb, loadDb, getBonusForAmount } = require('./db');
 
 // Controllers
 const authController = require('./controllers/authController');
@@ -221,16 +221,19 @@ app.get('/api/products', async (req, res) => {
   try {
     loadDb();
     
+    const minPlanAmount = Number(dbData.settings?.min_plan_amount ?? 200);
+    const maxPlanAmount = Number(dbData.settings?.max_plan_amount ?? 100000);
+    
     // Start with all standard database products
     let productsList = [...dbData.products];
     
-    // 1. Add dynamic P2P products generated from active pending withdrawals (min ₹200, max ₹200,000 limit)
+    // 1. Add dynamic P2P products generated from active pending withdrawals
     const pendingWithdrawals = (dbData.withdrawals || [])
-      .filter(w => w.status === 'Pending' && w.amount_pending >= 200 && w.amount_pending <= 200000);
+      .filter(w => w.status === 'Pending' && w.amount_pending >= minPlanAmount && w.amount_pending <= maxPlanAmount);
       
     pendingWithdrawals.forEach(w => {
       const seller = dbData.users.find(u => u.id == w.user_id);
-      if (!seller || seller.bcoin_balance < 200 || seller.is_blocked) return;
+      if (!seller || seller.bcoin_balance < minPlanAmount || seller.is_blocked) return;
 
       const bank = dbData.bank_accounts.find(b => b.user_id == seller.id && b.status === 'Active');
       if (!bank) return;
@@ -243,10 +246,10 @@ app.get('/api/products', async (req, res) => {
           return sum + o.amount;
         }, 0);
       const availableBalance = seller.bcoin_balance - activeMatchTotal;
-      if (availableBalance < 200 || availableBalance < w.amount_pending) return;
+      if (availableBalance < minPlanAmount || availableBalance < w.amount_pending) return;
 
-      const amount = Math.min(w.amount_pending, 200000);
-      const income = Number((amount * 0.10 + 8).toFixed(2));
+      const amount = Math.min(w.amount_pending, maxPlanAmount);
+      const income = getBonusForAmount(amount);
       const quota = Number((amount + income).toFixed(2));
       
       productsList.push({
@@ -257,16 +260,16 @@ app.get('/api/products', async (req, res) => {
         quota: quota,
         color: ['blue', 'red', 'green', 'purple', 'indigo'][seller.id % 5],
         type: 'Bank',
-        percent: '10%+8',
+        percent: 'Dynamic Bonus',
         is_p2p: true,
         matched_user_id: seller.id,
         withdrawal_id: w.id
       });
     });
 
-    // 2. Add dynamic P2P products from users with TCoin balance >= 200 (up to ₹200,000 max)
+    // 2. Add dynamic P2P products from users with TCoin balance >= minPlanAmount
     const eligibleSellers = (dbData.users || []).filter(u => {
-      if (u.id === 1 || u.is_blocked || u.bcoin_balance < 200) return false;
+      if (u.id === 1 || u.is_blocked || u.bcoin_balance < minPlanAmount) return false;
       const hasBank = (dbData.bank_accounts || []).some(b => b.user_id == u.id && b.status === 'Active');
       if (!hasBank) return false;
 
@@ -278,7 +281,7 @@ app.get('/api/products', async (req, res) => {
         .filter(o => o.receiver_id == u.id && ['Pending', 'Confirming', 'Disputed'].includes(o.status))
         .reduce((sum, o) => sum + o.amount, 0);
       const availableBalance = u.bcoin_balance - activeMatchTotal;
-      return availableBalance >= 200;
+      return availableBalance >= minPlanAmount;
     });
 
     eligibleSellers.forEach(seller => {
@@ -286,10 +289,10 @@ app.get('/api/products', async (req, res) => {
         .filter(o => o.receiver_id == seller.id && ['Pending', 'Confirming', 'Disputed'].includes(o.status))
         .reduce((sum, o) => sum + o.amount, 0);
       const availableBalance = seller.bcoin_balance - activeMatchTotal;
-      const rawAmount = Math.min(availableBalance, 200000); // Cap at ₹2 Lakhs
-      if (rawAmount >= 200) {
+      const rawAmount = Math.min(availableBalance, maxPlanAmount);
+      if (rawAmount >= minPlanAmount) {
         const amount = Math.floor(rawAmount);
-        const income = Number((amount * 0.10 + 8).toFixed(2));
+        const income = getBonusForAmount(amount);
         const quota = Number((amount + income).toFixed(2));
         productsList.push({
           id: `p2p_seller_${seller.id}`,
@@ -299,22 +302,22 @@ app.get('/api/products', async (req, res) => {
           quota: quota,
           color: ['purple', 'indigo', 'blue', 'emerald', 'amber'][seller.id % 5],
           type: 'Bank',
-          percent: '10%+8',
+          percent: 'Dynamic Bonus',
           is_p2p: true,
           matched_user_id: seller.id
         });
       }
     });
 
-    // 3. Add 2 Random Auto-Orders up to ₹200,000 (2 Lakhs) for system liquidity
+    // 3. Add 2 Random Auto-Orders within minPlanAmount & maxPlanAmount for system liquidity
     const randomAmounts = [
-      Math.floor(200 + Math.random() * 49800), // Random amount 1: ₹200 to ₹50,000
-      Math.floor(50000 + Math.random() * 150000) // Random amount 2: ₹50,000 to ₹200,000 (2 Lakhs)
+      Math.floor(minPlanAmount + Math.random() * Math.max(0, (maxPlanAmount / 2) - minPlanAmount)),
+      Math.floor((maxPlanAmount / 2) + Math.random() * (maxPlanAmount / 2))
     ];
 
     randomAmounts.forEach((randAmt, idx) => {
-      const amount = Math.min(Math.max(randAmt, 200), 200000);
-      const income = Number((amount * 0.10 + 8).toFixed(2));
+      const amount = Math.min(Math.max(randAmt, minPlanAmount), maxPlanAmount);
+      const income = getBonusForAmount(amount);
       const quota = Number((amount + income).toFixed(2));
       productsList.push({
         id: `auto_order_random_${idx + 1}`,
@@ -324,11 +327,14 @@ app.get('/api/products', async (req, res) => {
         quota: quota,
         color: idx === 0 ? 'emerald' : 'blue',
         type: 'Bank',
-        percent: '10%+8',
+        percent: 'Dynamic Bonus',
         is_auto: true
       });
     });
     
+    // Filter products list strictly within [minPlanAmount, maxPlanAmount]
+    productsList = productsList.filter(p => Number(p.amount) >= minPlanAmount && Number(p.amount) <= maxPlanAmount);
+
     // Sort products by amount to display cleanly
     productsList.sort((a, b) => a.amount - b.amount);
     
@@ -540,11 +546,89 @@ app.delete('/api/admin/messages/:id', adminAuth, async (req, res) => {
   }
 });
 
-// Commission Setup Settings Routes
+// Commission Slabs CRUD Management Routes
+app.get('/api/admin/commission-slabs', adminAuth, async (req, res) => {
+  try {
+    loadDb();
+    const slabs = dbData.commission_slabs || [];
+    return res.json({ success: true, slabs });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/commission-slabs', adminAuth, async (req, res) => {
+  try {
+    const { min_amount, max_amount, commission_percent, flat_bonus } = req.body;
+    if (min_amount === undefined || max_amount === undefined || commission_percent === undefined) {
+      return res.status(400).json({ error: 'min_amount, max_amount, and commission_percent are required.' });
+    }
+    loadDb();
+    dbData.commission_slabs = dbData.commission_slabs || [];
+    idTrackers.commission_slabs = (idTrackers.commission_slabs || 0) + 1;
+    const newId = idTrackers.commission_slabs;
+    const newSlab = {
+      id: newId,
+      min_amount: Number(min_amount),
+      max_amount: Number(max_amount),
+      commission_percent: Number(commission_percent),
+      flat_bonus: Number(flat_bonus || 0)
+    };
+    dbData.commission_slabs.push(newSlab);
+    saveDb();
+    return res.json({ success: true, slab: newSlab, message: 'Commission slab added successfully!' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/admin/commission-slabs/:id', adminAuth, async (req, res) => {
+  try {
+    const { min_amount, max_amount, commission_percent, flat_bonus } = req.body;
+    const id = Number(req.params.id);
+    loadDb();
+    dbData.commission_slabs = dbData.commission_slabs || [];
+    const idx = dbData.commission_slabs.findIndex(s => s.id === id);
+    if (idx === -1) {
+      return res.status(404).json({ error: 'Commission slab not found.' });
+    }
+    dbData.commission_slabs[idx] = {
+      ...dbData.commission_slabs[idx],
+      min_amount: Number(min_amount),
+      max_amount: Number(max_amount),
+      commission_percent: Number(commission_percent),
+      flat_bonus: Number(flat_bonus || 0)
+    };
+    saveDb();
+    return res.json({ success: true, slab: dbData.commission_slabs[idx], message: 'Commission slab updated successfully!' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/admin/commission-slabs/:id', adminAuth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    loadDb();
+    dbData.commission_slabs = dbData.commission_slabs || [];
+    dbData.commission_slabs = dbData.commission_slabs.filter(s => s.id !== id);
+    saveDb();
+    return res.json({ success: true, message: 'Commission slab deleted successfully!' });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Commission & System Settings Routes
 app.get('/api/admin/settings', adminAuth, async (req, res) => {
   try {
+    loadDb();
     const config = await query.get('SELECT * FROM settings LIMIT 1');
-    return res.json({ success: true, settings: config });
+    const fullConfig = {
+      ...(config || {}),
+      ...(dbData.settings || {})
+    };
+    return res.json({ success: true, settings: fullConfig });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -552,7 +636,21 @@ app.get('/api/admin/settings', adminAuth, async (req, res) => {
 
 app.post('/api/admin/settings', adminAuth, async (req, res) => {
   try {
-    const { level1_commission, level2_commission, level3_commission, telegram_link, winpey_api_key, winpey_api_secret, payment_mode, upi_ids } = req.body;
+    const { level1_commission, level2_commission, level3_commission, min_plan_amount, max_plan_amount, telegram_link, winpey_api_key, winpey_api_secret, payment_mode, upi_ids } = req.body;
+    loadDb();
+    dbData.settings = dbData.settings || {};
+    dbData.settings.level1_commission = Number(level1_commission || 0);
+    dbData.settings.level2_commission = Number(level2_commission || 0);
+    dbData.settings.level3_commission = Number(level3_commission || 0);
+    dbData.settings.min_plan_amount = Number(min_plan_amount ?? 200);
+    dbData.settings.max_plan_amount = Number(max_plan_amount ?? 100000);
+    dbData.settings.telegram_link = telegram_link || "https://t.me/TpayX";
+    dbData.settings.winpey_api_key = winpey_api_key || "488b923c-2b03-465e-b9df-55d018124e0c";
+    dbData.settings.winpey_api_secret = winpey_api_secret || "fc4a56a2439f47c19213c747ee5693c6";
+    dbData.settings.payment_mode = payment_mode || "gateway";
+    dbData.settings.upi_ids = upi_ids || "";
+    saveDb();
+
     await query.run('UPDATE settings SET level1_commission = ?, level2_commission = ?, level3_commission = ?, telegram_link = ?, winpey_api_key = ?, winpey_api_secret = ?, payment_mode = ?, upi_ids = ?', [
       Number(level1_commission || 0),
       Number(level2_commission || 0),

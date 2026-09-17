@@ -5,6 +5,8 @@ const SettingsManager = ({ token, theme }) => {
   const [level1, setLevel1] = useState(10);
   const [level2, setLevel2] = useState(5);
   const [level3, setLevel3] = useState(2);
+  const [minPlanAmount, setMinPlanAmount] = useState(200);
+  const [maxPlanAmount, setMaxPlanAmount] = useState(100000);
   const [telegramLink, setTelegramLink] = useState('https://t.me/TpayX');
   const [winpeyApiKey, setWinpeyApiKey] = useState('488b923c-2b03-465e-b9df-55d018124e0c');
   const [winpeyApiSecret, setWinpeyApiSecret] = useState('fc4a56a2439f47c19213c747ee5693c6');
@@ -14,6 +16,26 @@ const SettingsManager = ({ token, theme }) => {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
+
+  // Commission Slabs State
+  const [slabs, setSlabs] = useState([]);
+  const [slabLoading, setSlabLoading] = useState(false);
+  const [slabMsg, setSlabMsg] = useState('');
+  const [slabErr, setSlabErr] = useState('');
+
+  // Add Slab Form State
+  const [newMin, setNewMin] = useState('');
+  const [newMax, setNewMax] = useState('');
+  const [newPct, setNewPct] = useState('');
+  const [newFlat, setNewFlat] = useState('');
+  const [addingSlab, setAddingSlab] = useState(false);
+
+  // Edit Slab Form State
+  const [editingSlabId, setEditingSlabId] = useState(null);
+  const [editMin, setEditMin] = useState('');
+  const [editMax, setEditMax] = useState('');
+  const [editPct, setEditPct] = useState('');
+  const [editFlat, setEditFlat] = useState('');
 
   const [rotationEnabled, setRotationEnabled] = useState(true);
   const [rotationInterval, setRotationInterval] = useState(2);
@@ -28,6 +50,175 @@ const SettingsManager = ({ token, theme }) => {
   const [passSubmitting, setPassSubmitting] = useState(false);
   const [passMsg, setPassMsg] = useState('');
   const [passErr, setPassErr] = useState('');
+
+  const API_BASE = import.meta.env.VITE_API_URL || '/api';
+  const API_ADMIN_BASE = `${API_BASE}/admin`;
+
+  const getHeaders = () => ({ headers: { Authorization: `Bearer ${token}` } });
+
+  const fetchSettings = async () => {
+    try {
+      const res = await axios.get(`${API_ADMIN_BASE}/settings`, getHeaders());
+      if (res.data.success && res.data.settings) {
+        const s = res.data.settings;
+        setLevel1(s.level1_commission);
+        setLevel2(s.level2_commission);
+        setLevel3(s.level3_commission);
+        if (s.min_plan_amount !== undefined) setMinPlanAmount(s.min_plan_amount);
+        if (s.max_plan_amount !== undefined) setMaxPlanAmount(s.max_plan_amount);
+        if (s.telegram_link) setTelegramLink(s.telegram_link);
+        if (s.winpey_api_key) setWinpeyApiKey(s.winpey_api_key);
+        if (s.winpey_api_secret) setWinpeyApiSecret(s.winpey_api_secret);
+        setPaymentMode(s.payment_mode || 'gateway');
+        setUpiIds(s.upi_ids ? s.upi_ids.split(',').join('\n') : '');
+      }
+    } catch { setError('Failed to load settings.'); }
+    finally { setLoading(false); }
+
+    try {
+      const rRes = await axios.get(`${API_ADMIN_BASE}/rotation-config`, getHeaders());
+      if (rRes.data.success) {
+        const c = rRes.data.config;
+        setRotationEnabled(c.enabled);
+        setRotationInterval(c.intervalMinutes);
+        setRotationMin(c.minTotal);
+        setRotationMax(c.maxTotal);
+      }
+    } catch {}
+  };
+
+  const fetchSlabs = async () => {
+    setSlabLoading(true);
+    try {
+      const res = await axios.get(`${API_ADMIN_BASE}/commission-slabs`, getHeaders());
+      if (res.data.success) {
+        setSlabs(res.data.slabs || []);
+      }
+    } catch (e) {
+      console.error('Failed to load commission slabs:', e);
+    } finally {
+      setSlabLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+    fetchSlabs();
+  }, []);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setError(''); setSuccess('');
+    const l1 = Number(level1), l2 = Number(level2), l3 = Number(level3);
+    const minP = Number(minPlanAmount), maxP = Number(maxPlanAmount);
+    if (isNaN(l1)||isNaN(l2)||isNaN(l3)) { setError('Please enter valid numeric commission values'); return; }
+    if (isNaN(minP)||isNaN(maxP)||minP < 0||maxP <= minP) { setError('Please enter valid Minimum and Maximum Plan Amounts'); return; }
+    if ([l1,l2,l3].some(v => v < 0 || v > 100)) { setError('Percentages must be 0–100'); return; }
+
+    setSubmitting(true);
+    try {
+      const res = await axios.post(`${API_ADMIN_BASE}/settings`,
+        { 
+          level1_commission: l1, 
+          level2_commission: l2, 
+          level3_commission: l3, 
+          min_plan_amount: minP,
+          max_plan_amount: maxP,
+          telegram_link: telegramLink,
+          winpey_api_key: winpeyApiKey,
+          winpey_api_secret: winpeyApiSecret,
+          payment_mode: paymentMode,
+          upi_ids: upiIds.split('\n').map(s => s.trim()).filter(Boolean).join(',')
+        },
+        getHeaders()
+      );
+      if (res.data.success) { setSuccess('Settings updated successfully!'); fetchSettings(); setTimeout(() => setSuccess(''), 4500); }
+    } catch (err) { setError(err.response?.data?.error || 'Failed to save'); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleAddSlab = async (e) => {
+    e.preventDefault();
+    setSlabMsg(''); setSlabErr('');
+    if (!newMin || !newMax || !newPct) {
+      setSlabErr('Please enter Min Amount, Max Amount, and Bonus Percentage.');
+      return;
+    }
+    setAddingSlab(true);
+    try {
+      const res = await axios.post(`${API_ADMIN_BASE}/commission-slabs`, {
+        min_amount: Number(newMin),
+        max_amount: Number(newMax),
+        commission_percent: Number(newPct),
+        flat_bonus: Number(newFlat || 0)
+      }, getHeaders());
+      if (res.data.success) {
+        setSlabMsg(res.data.message || 'Commission slab added successfully!');
+        setNewMin(''); setNewMax(''); setNewPct(''); setNewFlat('');
+        fetchSlabs();
+        setTimeout(() => setSlabMsg(''), 4500);
+      }
+    } catch (err) {
+      setSlabErr(err.response?.data?.error || 'Failed to add commission slab');
+    } finally {
+      setAddingSlab(false);
+    }
+  };
+
+  const handleStartEditSlab = (slab) => {
+    setEditingSlabId(slab.id);
+    setEditMin(String(slab.min_amount));
+    setEditMax(String(slab.max_amount));
+    setEditPct(String(slab.commission_percent));
+    setEditFlat(String(slab.flat_bonus || 0));
+  };
+
+  const handleSaveEditSlab = async (id) => {
+    setSlabMsg(''); setSlabErr('');
+    try {
+      const res = await axios.put(`${API_ADMIN_BASE}/commission-slabs/${id}`, {
+        min_amount: Number(editMin),
+        max_amount: Number(editMax),
+        commission_percent: Number(editPct),
+        flat_bonus: Number(editFlat || 0)
+      }, getHeaders());
+      if (res.data.success) {
+        setSlabMsg('Slab updated successfully!');
+        setEditingSlabId(null);
+        fetchSlabs();
+        setTimeout(() => setSlabMsg(''), 4500);
+      }
+    } catch (err) {
+      setSlabErr(err.response?.data?.error || 'Failed to update slab');
+    }
+  };
+
+  const handleDeleteSlab = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this commission slab?')) return;
+    setSlabMsg(''); setSlabErr('');
+    try {
+      const res = await axios.delete(`${API_ADMIN_BASE}/commission-slabs/${id}`, getHeaders());
+      if (res.data.success) {
+        setSlabMsg('Slab deleted successfully!');
+        fetchSlabs();
+        setTimeout(() => setSlabMsg(''), 4500);
+      }
+    } catch (err) {
+      setSlabErr(err.response?.data?.error || 'Failed to delete slab');
+    }
+  };
+
+  const handleSaveRotation = async () => {
+    setRotationSaving(true);
+    try {
+      const res = await axios.post(`${API_ADMIN_BASE}/rotation-config`, {
+        enabled: rotationEnabled, intervalMinutes: Number(rotationInterval),
+        minTotal: Number(rotationMin), maxTotal: Number(rotationMax),
+      }, getHeaders());
+      if (res.data.success) { setRotationMsg('Rotation config saved!'); setTimeout(() => setRotationMsg(''), 4000); }
+    } catch { setRotationMsg('Failed to save.'); }
+    finally { setRotationSaving(false); }
+  };
 
   const handleAdminPasswordChange = async (e) => {
     e.preventDefault();
@@ -55,80 +246,6 @@ const SettingsManager = ({ token, theme }) => {
     }
   };
 
-  const API_BASE = import.meta.env.VITE_API_URL || '/api';
-  const API_ADMIN_BASE = `${API_BASE}/admin`;
-
-  const getHeaders = () => ({ headers: { Authorization: `Bearer ${token}` } });
-
-  const fetchSettings = async () => {
-    try {
-      const res = await axios.get(`${API_ADMIN_BASE}/settings`, getHeaders());
-      if (res.data.success && res.data.settings) {
-        const s = res.data.settings;
-        setLevel1(s.level1_commission);
-        setLevel2(s.level2_commission);
-        setLevel3(s.level3_commission);
-        if (s.telegram_link) setTelegramLink(s.telegram_link);
-        if (s.winpey_api_key) setWinpeyApiKey(s.winpey_api_key);
-        if (s.winpey_api_secret) setWinpeyApiSecret(s.winpey_api_secret);
-        setPaymentMode(s.payment_mode || 'gateway');
-        setUpiIds(s.upi_ids ? s.upi_ids.split(',').join('\n') : '');
-      }
-    } catch { setError('Failed to load settings.'); }
-    finally { setLoading(false); }
-
-    try {
-      const rRes = await axios.get(`${API_ADMIN_BASE}/rotation-config`, getHeaders());
-      if (rRes.data.success) {
-        const c = rRes.data.config;
-        setRotationEnabled(c.enabled);
-        setRotationInterval(c.intervalMinutes);
-        setRotationMin(c.minTotal);
-        setRotationMax(c.maxTotal);
-      }
-    } catch {}
-  };
-
-  useEffect(() => { fetchSettings(); }, []);
-
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setError(''); setSuccess('');
-    const l1 = Number(level1), l2 = Number(level2), l3 = Number(level3);
-    if (isNaN(l1)||isNaN(l2)||isNaN(l3)) { setError('Please enter valid numeric values'); return; }
-    if ([l1,l2,l3].some(v => v < 0 || v > 100)) { setError('Percentages must be 0–100'); return; }
-    setSubmitting(true);
-    try {
-      const res = await axios.post(`${API_ADMIN_BASE}/settings`,
-        { 
-          level1_commission: l1, 
-          level2_commission: l2, 
-          level3_commission: l3, 
-          telegram_link: telegramLink,
-          winpey_api_key: winpeyApiKey,
-          winpey_api_secret: winpeyApiSecret,
-          payment_mode: paymentMode,
-          upi_ids: upiIds.split('\n').map(s => s.trim()).filter(Boolean).join(',')
-        },
-        getHeaders()
-      );
-      if (res.data.success) { setSuccess('Settings updated successfully!'); fetchSettings(); setTimeout(() => setSuccess(''), 4500); }
-    } catch (err) { setError(err.response?.data?.error || 'Failed to save'); }
-    finally { setSubmitting(false); }
-  };
-
-  const handleSaveRotation = async () => {
-    setRotationSaving(true);
-    try {
-      const res = await axios.post(`${API_ADMIN_BASE}/rotation-config`, {
-        enabled: rotationEnabled, intervalMinutes: Number(rotationInterval),
-        minTotal: Number(rotationMin), maxTotal: Number(rotationMax),
-      }, getHeaders());
-      if (res.data.success) { setRotationMsg('Rotation config saved!'); setTimeout(() => setRotationMsg(''), 4000); }
-    } catch { setRotationMsg('Failed to save.'); }
-    finally { setRotationSaving(false); }
-  };
-
   const isDark = theme === 'dark';
   const cardBg = isDark ? 'bg-[#131427] border-[#1b1c34]/50' : 'bg-white border-slate-200';
   const text1  = isDark ? 'text-white' : 'text-slate-800';
@@ -136,7 +253,7 @@ const SettingsManager = ({ token, theme }) => {
   const inp    = isDark ? 'bg-[#181931] border-[#1b1c34] text-white focus:border-violet-500' : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-violet-400';
   const row    = isDark ? 'bg-[#181931]/30 border-[#1b1c34]/50' : 'bg-slate-50/50 border-slate-100';
 
-  const levelBadge = (label, color) => {
+  const levelBadge = (label) => {
     const map = {
       L1: isDark ? 'bg-blue-600/20 text-blue-400 border-blue-500/20' : 'bg-blue-50 text-blue-600 border-blue-100',
       L2: isDark ? 'bg-amber-600/20 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-600 border-amber-100',
@@ -146,13 +263,137 @@ const SettingsManager = ({ token, theme }) => {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6">
 
-      {/* Commission Card */}
+      {/* 1. DYNAMIC COMMISSION SETUP CARD (Amount Range Bonus Slabs) */}
       <div className={`border rounded-[1.8rem] p-6 md:p-8 shadow-md ${cardBg}`}>
         <div className="border-b border-gray-100/10 pb-4 mb-6">
-          <h3 className={`text-base font-bold uppercase tracking-wide ${text1}`}>Referral Commissions Setup</h3>
-          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Configure deposit commission rewards for 3-Level sponsorship chains</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className={`text-base font-bold uppercase tracking-wide flex items-center gap-2 ${text1}`}>
+                <i className="fas fa-calculator text-violet-500" /> Dynamic Commission Setup (Bonus Slabs)
+              </h3>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">
+                Configure bonus % and extra +₹ rewards based on deposit amount ranges
+              </p>
+            </div>
+            <span className="text-[9px] bg-violet-500/10 text-violet-400 border border-violet-500/20 px-2.5 py-1 rounded-full font-mono font-bold uppercase">
+              {slabs.length} Active Slabs
+            </span>
+          </div>
+        </div>
+
+        {slabMsg && <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-2xl p-3 text-xs font-bold mb-4"><i className="fas fa-check-circle mr-1" />{slabMsg}</div>}
+        {slabErr && <div className="bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-2xl p-3 text-xs font-bold mb-4"><i className="fas fa-exclamation-triangle mr-1" />{slabErr}</div>}
+
+        {/* Existing Slabs List Table */}
+        <div className="space-y-3 mb-6">
+          {slabLoading ? (
+            <div className="text-center py-6 text-slate-500 text-xs font-bold uppercase"><i className="fas fa-spinner fa-spin mr-2" /> Loading bonus slabs...</div>
+          ) : slabs.length === 0 ? (
+            <div className="text-center py-6 text-slate-500 text-xs font-bold uppercase">No commission slabs configured yet. Add your first slab below.</div>
+          ) : (
+            slabs.map((slab, index) => (
+              <div key={slab.id || index} className={`border rounded-2xl p-4 transition-all ${row}`}>
+                {editingSlabId === slab.id ? (
+                  /* Edit Slab Form Inline */
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-center">
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Min Amount (₹)</label>
+                      <input type="number" value={editMin} onChange={e => setEditMin(e.target.value)} className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-bold ${inp}`} />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Max Amount (₹)</label>
+                      <input type="number" value={editMax} onChange={e => setEditMax(e.target.value)} className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-bold ${inp}`} />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Bonus %</label>
+                      <input type="number" step="0.1" value={editPct} onChange={e => setEditPct(e.target.value)} className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-bold ${inp}`} />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Extra +₹</label>
+                      <input type="number" step="1" value={editFlat} onChange={e => setEditFlat(e.target.value)} className={`w-full border rounded-xl px-2.5 py-1.5 text-xs font-bold ${inp}`} />
+                    </div>
+                    <div className="flex gap-2 justify-end sm:mt-4">
+                      <button onClick={() => handleSaveEditSlab(slab.id)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl uppercase active:scale-95 transition-all">Save</button>
+                      <button onClick={() => setEditingSlabId(null)} className="bg-slate-600 hover:bg-slate-500 text-white text-[10px] font-bold px-3 py-1.5 rounded-xl uppercase active:scale-95 transition-all">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Slab Display Row */
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-violet-600/20 text-violet-400 flex items-center justify-center font-bold text-xs border border-violet-500/20">
+                        #{index + 1}
+                      </div>
+                      <div>
+                        <span className={`font-black text-xs uppercase tracking-wide block ${text1}`}>
+                          ₹{Number(slab.min_amount).toLocaleString('en-IN')} – ₹{Number(slab.max_amount).toLocaleString('en-IN')}
+                        </span>
+                        <span className="block text-[9px] text-slate-500 font-bold uppercase mt-0.5">
+                          Amount Range Limit
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <span className="font-extrabold text-sm text-emerald-400 block">
+                          {slab.commission_percent}% {Number(slab.flat_bonus) > 0 ? `+ ₹${slab.flat_bonus}` : ''}
+                        </span>
+                        <span className="text-[9px] text-slate-500 font-bold uppercase block">
+                          Calculated Reward
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => handleStartEditSlab(slab)} className="w-8 h-8 rounded-xl bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 flex items-center justify-center text-xs active:scale-95 transition-all" title="Edit Slab">
+                          <i className="fas fa-edit" />
+                        </button>
+                        <button onClick={() => handleDeleteSlab(slab.id)} className="w-8 h-8 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 flex items-center justify-center text-xs active:scale-95 transition-all" title="Delete Slab">
+                          <i className="fas fa-trash-alt" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Add New Slab Form */}
+        <form onSubmit={handleAddSlab} className={`border rounded-2xl p-5 space-y-4 ${row}`}>
+          <h4 className={`text-xs font-black uppercase tracking-wider ${text1}`}>+ Add New Commission Slab</h4>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className={`block text-[9px] font-extrabold uppercase tracking-wider mb-1 ${text2}`}>Min Amount (₹)</label>
+              <input type="number" min="0" placeholder="e.g. 500" value={newMin} onChange={e => setNewMin(e.target.value)} className={`w-full border rounded-xl px-3 py-2 text-xs font-bold ${inp}`} required />
+            </div>
+            <div>
+              <label className={`block text-[9px] font-extrabold uppercase tracking-wider mb-1 ${text2}`}>Max Amount (₹)</label>
+              <input type="number" min="0" placeholder="e.g. 10000" value={newMax} onChange={e => setNewMax(e.target.value)} className={`w-full border rounded-xl px-3 py-2 text-xs font-bold ${inp}`} required />
+            </div>
+            <div>
+              <label className={`block text-[9px] font-extrabold uppercase tracking-wider mb-1 ${text2}`}>Bonus %</label>
+              <input type="number" step="0.1" min="0" max="100" placeholder="e.g. 2.5" value={newPct} onChange={e => setNewPct(e.target.value)} className={`w-full border rounded-xl px-3 py-2 text-xs font-bold ${inp}`} required />
+            </div>
+            <div>
+              <label className={`block text-[9px] font-extrabold uppercase tracking-wider mb-1 ${text2}`}>Extra +₹ (Flat)</label>
+              <input type="number" step="1" min="0" placeholder="e.g. 6" value={newFlat} onChange={e => setNewFlat(e.target.value)} className={`w-full border rounded-xl px-3 py-2 text-xs font-bold ${inp}`} />
+            </div>
+          </div>
+          <button type="submit" disabled={addingSlab} className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs uppercase tracking-widest active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-1.5">
+            {addingSlab ? <i className="fas fa-spinner fa-spin" /> : <><i className="fas fa-plus-circle" /> Add Slab Rule</>}
+          </button>
+        </form>
+      </div>
+
+      {/* 2. REFERRAL & PLAN LIMITS SETTINGS CARD */}
+      <div className={`border rounded-[1.8rem] p-6 md:p-8 shadow-md ${cardBg}`}>
+        <div className="border-b border-gray-100/10 pb-4 mb-6">
+          <h3 className={`text-base font-bold uppercase tracking-wide ${text1}`}>Referral &amp; Plan Limits Setup</h3>
+          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Configure multi-level sponsorship commissions and plan display bounds</p>
         </div>
 
         {loading ? (
@@ -164,6 +405,33 @@ const SettingsManager = ({ token, theme }) => {
             {error && <div className="bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl p-4 text-xs font-bold uppercase tracking-wide"><i className="fas fa-exclamation-triangle mr-2" />{error}</div>}
             {success && <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-2xl p-4 text-xs font-bold uppercase tracking-wide"><i className="fas fa-check-circle mr-2" />{success}</div>}
 
+            {/* Plan Display Range Limits (Min & Max Plan Amount) */}
+            <div className={`border rounded-2xl p-5 space-y-3.5 ${row}`}>
+              <div className="flex items-center gap-3.5">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs border ${isDark ? 'bg-emerald-600/20 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
+                  <i className="fas fa-sliders-h text-base" />
+                </div>
+                <div>
+                  <span className={`font-black text-xs uppercase tracking-wide block ${text1}`}>Plan Display Bounds (Min &amp; Max Plan)</span>
+                  <span className="block text-[8px] text-slate-500 font-black tracking-[0.1em] uppercase mt-1">
+                    Only plans within this range will be displayed to users in the app (e.g. Max ₹1,00,000)
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                <div>
+                  <label className={`block text-[10px] font-black uppercase tracking-wider mb-1.5 ${text2}`}>Minimum Plan Amount (₹)</label>
+                  <input type="number" min="0" value={minPlanAmount} onChange={e => setMinPlanAmount(e.target.value)} className={`w-full border rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none ${inp}`} required />
+                </div>
+                <div>
+                  <label className={`block text-[10px] font-black uppercase tracking-wider mb-1.5 ${text2}`}>Maximum Plan Amount (₹)</label>
+                  <input type="number" min="1" value={maxPlanAmount} onChange={e => setMaxPlanAmount(e.target.value)} className={`w-full border rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none ${inp}`} required />
+                </div>
+              </div>
+            </div>
+
+            {/* Sponsorship Level Commissions */}
             {[
               { label: 'L1', title: 'Level 1 (Direct sponsor)', sub: 'Rewarded to immediate parent', val: level1, set: setLevel1 },
               { label: 'L2', title: 'Level 2 (Grandparent sponsor)', sub: "Rewarded to sponsor's parent", val: level2, set: setLevel2 },
@@ -207,7 +475,7 @@ const SettingsManager = ({ token, theme }) => {
                   <i className="fas fa-credit-card text-base" />
                 </div>
                 <div>
-                  <span className={`font-black text-xs uppercase tracking-wide block ${text1}`}>Recharge & Payment Options</span>
+                  <span className={`font-black text-xs uppercase tracking-wide block ${text1}`}>Recharge &amp; Payment Options</span>
                   <span className="block text-[8px] text-slate-500 font-black tracking-[0.1em] uppercase mt-1">Configure recharge modes and direct UPI accounts</span>
                 </div>
               </div>
@@ -285,13 +553,13 @@ const SettingsManager = ({ token, theme }) => {
 
             <button type="submit" disabled={submitting}
               className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/25 active:scale-[0.98] transition-all disabled:opacity-60">
-              {submitting ? <i className="fas fa-spinner fa-spin" /> : <><i className="fas fa-save mr-1" />Save Commission Rules</>}
+              {submitting ? <i className="fas fa-spinner fa-spin" /> : <><i className="fas fa-save mr-1" />Save Global Settings</>}
             </button>
           </form>
         )}
       </div>
 
-      {/* Auto Plan Rotation Card */}
+      {/* 3. AUTO PLAN ROTATION CARD */}
       <div className={`border rounded-[1.8rem] p-6 md:p-8 shadow-md ${cardBg}`}>
         <div className="border-b border-gray-100/10 pb-4 mb-6">
           <h3 className={`text-base font-bold uppercase tracking-wide ${text1}`}>
@@ -356,7 +624,7 @@ const SettingsManager = ({ token, theme }) => {
         </button>
       </div>
 
-      {/* Admin Password Change Card */}
+      {/* 4. ADMIN PASSWORD CHANGE CARD */}
       <div className={`border rounded-[1.8rem] p-6 md:p-8 shadow-md ${cardBg}`}>
         <div className="border-b border-gray-100/10 pb-4 mb-6">
           <h3 className={`text-base font-bold uppercase tracking-wide ${text1}`}>
@@ -409,4 +677,3 @@ const SettingsManager = ({ token, theme }) => {
 };
 
 export default SettingsManager;
-

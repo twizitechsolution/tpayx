@@ -386,6 +386,10 @@ function loadDb() {
       }
 
       // Ensure dynamic tables are initialized
+      dbData.commission_slabs = dbData.commission_slabs || [
+        { id: 1, min_amount: 500, max_amount: 10000, commission_percent: 2.5, flat_bonus: 0 },
+        { id: 2, min_amount: 10001, max_amount: 1000000, commission_percent: 3.0, flat_bonus: 6 }
+      ];
       dbData.products = dbData.products || [];
       dbData.price_ranges = dbData.price_ranges || [];
       dbData.sliders = dbData.sliders || [];
@@ -397,14 +401,19 @@ function loadDb() {
         level1_commission: 10,
         level2_commission: 5,
         level3_commission: 2,
+        min_plan_amount: 200,
+        max_plan_amount: 100000,
         telegram_link: "https://t.me/TpayX",
         winpey_api_key: "488b923c-2b03-465e-b9df-55d018124e0c",
         winpey_api_secret: "fc4a56a2439f47c19213c747ee5693c6"
       };
       if (dbData.settings.telegram_link === undefined) dbData.settings.telegram_link = "https://t.me/TpayX";
+      if (dbData.settings.min_plan_amount === undefined) dbData.settings.min_plan_amount = 200;
+      if (dbData.settings.max_plan_amount === undefined) dbData.settings.max_plan_amount = 100000;
       if (!dbData.settings.winpey_api_key) dbData.settings.winpey_api_key = "488b923c-2b03-465e-b9df-55d018124e0c";
       if (!dbData.settings.winpey_api_secret) dbData.settings.winpey_api_secret = "fc4a56a2439f47c19213c747ee5693c6";
 
+      idTrackers.commission_slabs = idTrackers.commission_slabs || Math.max(2, dbData.commission_slabs.length);
       idTrackers.products = idTrackers.products || 0;
       idTrackers.price_ranges = idTrackers.price_ranges || 0;
       idTrackers.sliders = idTrackers.sliders || 0;
@@ -1376,6 +1385,43 @@ function saveBase64File(base64Str, prefix) {
   }
 }
 
+function getBonusForAmount(amount) {
+  loadDb();
+  const amt = Number(amount);
+  if (isNaN(amt) || amt <= 0) return 0;
+  
+  const slabs = dbData.commission_slabs || [
+    { id: 1, min_amount: 500, max_amount: 10000, commission_percent: 2.5, flat_bonus: 0 },
+    { id: 2, min_amount: 10001, max_amount: 1000000, commission_percent: 3.0, flat_bonus: 6 }
+  ];
+  
+  const sorted = [...slabs].sort((a, b) => Number(a.min_amount) - Number(b.min_amount));
+  const matched = sorted.find(s => amt >= Number(s.min_amount) && amt <= Number(s.max_amount));
+  
+  if (matched) {
+    const pctBonus = amt * (Number(matched.commission_percent) / 100);
+    const flatBonus = Number(matched.flat_bonus || 0);
+    return Number((pctBonus + flatBonus).toFixed(2));
+  }
+  
+  // If higher than highest slab, use highest slab; if lower than lowest slab, use lowest slab
+  if (sorted.length > 0) {
+    if (amt > Number(sorted[sorted.length - 1].max_amount)) {
+      const top = sorted[sorted.length - 1];
+      const pctBonus = amt * (Number(top.commission_percent) / 100);
+      const flatBonus = Number(top.flat_bonus || 0);
+      return Number((pctBonus + flatBonus).toFixed(2));
+    } else if (amt < Number(sorted[0].min_amount)) {
+      const bot = sorted[0];
+      const pctBonus = amt * (Number(bot.commission_percent) / 100);
+      const flatBonus = Number(bot.flat_bonus || 0);
+      return Number((pctBonus + flatBonus).toFixed(2));
+    }
+  }
+
+  return Number((amt * 0.025).toFixed(2));
+}
+
 module.exports = {
   db: {},
   query,
@@ -1384,6 +1430,8 @@ module.exports = {
   idTrackers,
   saveDb,
   loadDb,
-  saveBase64File
+  saveBase64File,
+  getBonusForAmount
 };
+
 

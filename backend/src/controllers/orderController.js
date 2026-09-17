@@ -1,4 +1,4 @@
-const { query, dbData, idTrackers, saveDb, loadDb } = require('../db');
+const { query, dbData, idTrackers, saveDb, loadDb, getBonusForAmount } = require('../db');
 
 // Helper to generate custom order IDs: gn/gu + YYYYMMDDHHMMSS + 6-digit uppercase hex
 function generateOrderId(prefix) {
@@ -185,7 +185,7 @@ exports.getPaymentQuote = async (req, res) => {
     let tempOrderId = '';
 
     if (assetType === 'INR') {
-      expectedIncome = (amtNum * 0.10) + 8.0;
+      expectedIncome = getBonusForAmount(amtNum);
       quota = amtNum + expectedIncome;
       tempOrderId = generateOrderId('gn');
     } else if (assetType === 'USDT') {
