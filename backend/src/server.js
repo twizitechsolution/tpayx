@@ -3,7 +3,7 @@ dotenv.config();
 
 const express = require('express');
 const cors = require('cors');
-const { initDb, query, dbData, idTrackers, saveDb, loadDb, getBonusForAmount } = require('./db');
+const { initDb, query, dbData, idTrackers, saveDb, loadDb, getBonusForAmount, getBonusSlabLabelForAmount } = require('./db');
 
 // Controllers
 const authController = require('./controllers/authController');
@@ -334,6 +334,21 @@ app.get('/api/products', async (req, res) => {
     
     // Filter products list strictly within [minPlanAmount, maxPlanAmount]
     productsList = productsList.filter(p => Number(p.amount) >= minPlanAmount && Number(p.amount) <= maxPlanAmount);
+
+    // Ensure all products dynamically recalculate income, quota, and percent from active admin slabs
+    productsList = productsList.map(p => {
+      const amt = Number(p.amount);
+      const inc = getBonusForAmount(amt);
+      const qta = Number((amt + inc).toFixed(2));
+      const lbl = getBonusSlabLabelForAmount(amt);
+      return {
+        ...p,
+        amount: amt,
+        income: inc,
+        quota: qta,
+        percent: lbl
+      };
+    });
 
     // Sort products by amount to display cleanly
     productsList.sort((a, b) => a.amount - b.amount);
@@ -1602,12 +1617,13 @@ async function runPlanRotation() {
     for (let i = 0; i < createCount; i++) {
       const bucket = PLAN_BUCKETS[randBetween(0, PLAN_BUCKETS.length - 1)];
       const amount = randBetween(bucket.min, bucket.max);
-      const income = Math.round((amount * bucket.rate + bucket.base) * 10) / 10;
-      const quota  = amount + income;
+      const income = getBonusForAmount(amount);
+      const quota  = Number((amount + income).toFixed(2));
+      const percentLabel = getBonusSlabLabelForAmount(amount);
       const name   = `Auto-${amount}`;
       await query.run(
         'INSERT INTO products (name, amount, income, quota, color, type, percent) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [name, amount, income, quota, 'blue', 'Bank', '10%+8']
+        [name, amount, income, quota, 'blue', 'Bank', percentLabel]
       );
     }
     console.log(`[AutoPlan] Created ${createCount} new plan(s). Total now: ${(await query.all('SELECT id FROM products')).length}`);

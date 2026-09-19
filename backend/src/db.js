@@ -1218,8 +1218,8 @@ async function initDb() {
 
   if (dbData.products.length === 0) {
     dbData.products = [
-      { id: 1, name: 'HDFC Bank', amount: 10000, income: 1008.0, quota: 11008, color: 'blue', type: 'Bank', percent: '10%+8', created_at: new Date().toISOString() },
-      { id: 2, name: 'SBI Bank', amount: 14544, income: 1462.40, quota: 16006.40, color: 'red', type: 'Bank', percent: '10%+8', created_at: new Date().toISOString() }
+      { id: 1, name: 'HDFC Bank', amount: 10000, income: 250.0, quota: 10250, color: 'blue', type: 'Bank', percent: '2.5%', created_at: new Date().toISOString() },
+      { id: 2, name: 'SBI Bank', amount: 14544, income: 442.32, quota: 14986.32, color: 'red', type: 'Bank', percent: '3%+6', created_at: new Date().toISOString() }
     ];
     idTrackers.products = 2;
   }
@@ -1422,6 +1422,27 @@ function getBonusForAmount(amount) {
   return Number((amt * 0.025).toFixed(2));
 }
 
+function getBonusSlabLabelForAmount(amount) {
+  loadDb();
+  const amt = Number(amount);
+  if (isNaN(amt) || amt <= 0) return 'Dynamic Bonus';
+
+  const slabs = dbData.commission_slabs || [
+    { id: 1, min_amount: 500, max_amount: 10000, commission_percent: 2.5, flat_bonus: 0 },
+    { id: 2, min_amount: 10001, max_amount: 1000000, commission_percent: 3.0, flat_bonus: 6 }
+  ];
+
+  const sorted = [...slabs].sort((a, b) => Number(a.min_amount) - Number(b.min_amount));
+  const matched = sorted.find(s => amt >= Number(s.min_amount) && amt <= Number(s.max_amount)) || (sorted.length > 0 ? (amt < Number(sorted[0].min_amount) ? sorted[0] : sorted[sorted.length - 1]) : null);
+
+  if (matched) {
+    const flat = Number(matched.flat_bonus || 0);
+    return flat > 0 ? `${matched.commission_percent}%+${flat}` : `${matched.commission_percent}%`;
+  }
+
+  return 'Dynamic Bonus';
+}
+
 module.exports = {
   db: {},
   query,
@@ -1431,7 +1452,8 @@ module.exports = {
   saveDb,
   loadDb,
   saveBase64File,
-  getBonusForAmount
+  getBonusForAmount,
+  getBonusSlabLabelForAmount
 };
 
 
