@@ -16,6 +16,7 @@
 
 
 
+
 <style>
   * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -104,6 +105,14 @@
     overflow-y: auto !important;
     overflow-x: hidden !important;
   }
+  #screen-login .scroll-area, #screen-signup .scroll-area {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 100% !important;
+  }
+  #screen-login .bg-white, #screen-signup .bg-white {
+    flex: 1 !important;
+  }
   .scroll-area::-webkit-scrollbar { display: none; }
   .nav-bar {
     height: 60px !important;
@@ -128,6 +137,7 @@
   .btn-primary { width: 100%; padding: 14px; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #fff; font-weight: 600; border-radius: 12px; border: none; font-size: 15px; cursor: pointer; transition: all 0.2s; }
   .btn-primary:active { transform: scale(0.98); }
 </style>
+
 
 
 
@@ -188,6 +198,8 @@
       <div class="absolute bottom-10 flex flex-col items-center">
         <div class="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
       </div>
+    </div>
+  </div>
     </div>
   </div>
     </div>
