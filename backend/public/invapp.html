@@ -7,47 +7,96 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+
+
 <style>
   * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-  body { background: #eef1f5; }
+  html, body {
+    background: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    overflow: hidden !important;
+  }
   .phone-frame {
-    width: 390px;
-    height: 844px;
-    background: #fff;
-    border-radius: 40px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.2);
-    overflow: hidden;
-    position: relative;
-    margin: 20px auto;
+    width: 100vw !important;
+    max-width: 100% !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    position: relative !important;
+    overflow: hidden !important;
   }
-  .screen { display: none !important; height: 100%; flex-direction: column; position: relative; width: 100%; }
-  .screen.active { display: flex !important; }
-  .scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; }
+  .screen {
+    display: none !important;
+    height: 100% !important;
+    width: 100% !important;
+    flex-direction: column !important;
+    position: relative !important;
+  }
+  .screen.active {
+    display: flex !important;
+  }
+  .modal-overlay {
+    display: none !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: rgba(15, 23, 42, 0.75) !important;
+    backdrop-filter: blur(4px) !important;
+    z-index: 1000 !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+  }
+  .modal-overlay.show {
+    display: flex !important;
+  }
+  .toast {
+    display: none !important;
+    position: absolute !important;
+    bottom: 80px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    background: rgba(15, 23, 42, 0.9) !important;
+    color: #fff !important;
+    padding: 10px 20px !important;
+    border-radius: 9999px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    z-index: 1100 !important;
+    white-space: nowrap !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+  }
+  .toast.show {
+    display: block !important;
+  }
+  .scroll-area {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
   .scroll-area::-webkit-scrollbar { display: none; }
-  .status-bar {
-    height: 44px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 20px;
-    font-size: 14px;
-    font-weight: 600;
-    color: #000;
-    background: transparent;
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 50;
-  }
   .nav-bar {
-    height: 70px;
-    background: #fff;
-    border-top: 1px solid #f0f0f0;
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    padding-bottom: 10px;
+    height: 60px !important;
+    min-height: 60px !important;
+    max-height: 60px !important;
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;
+    background: #ffffff !important;
+    border-top: 1px solid #f1f5f9 !important;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.05) !important;
   }
   .nav-item { display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; color: #999; font-size: 10px; }
   .nav-item.active { color: #2563eb; }
@@ -57,67 +106,14 @@
   .gradient-blue { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); }
   .gradient-purple { background: linear-gradient(135deg, #9c27b0 0%, #4a148c 100%); }
   .card-shadow { box-shadow: 0 4px 20px rgba(0,0,0,0.06); }
-  .toast {
-    position: fixed;
-    top: 60px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,0,0,0.85);
-    color: white;
-    padding: 10px 20px;
-    border-radius: 20px;
-    font-size: 13px;
-    z-index: 1000;
-    opacity: 0;
-    transition: opacity 0.3s;
-    pointer-events: none;
-  }
-  .toast.show { opacity: 1; }
-  .modal-overlay {
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.6);
-    z-index: 100;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  .modal-overlay.show { display: flex; }
-  .input-field {
-    width: 100%;
-    background: #f5f7fa;
-    border: 1px solid #e0e6ed;
-    border-radius: 12px;
-    padding: 14px 16px;
-    font-size: 14px;
-    outline: none;
-    transition: all 0.2s;
-  }
-  .input-field:focus { border-color: #2563eb; background: #fff; }
-  .btn-primary {
-    background: #2563eb;
-    color: white;
-    width: 100%;
-    padding: 16px;
-    border-radius: 12px;
-    font-weight: 600;
-    font-size: 16px;
-    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-  }
-  .step-line { height: 2px; background: #e0e6ed; flex: 1; margin: 0 4px; }
-  .step-line.active { background: #2563eb; }
-  .toggle-switch { width: 36px; height: 20px; background: #e0e6ed; border-radius: 10px; position: relative; cursor: pointer; transition: 0.2s; }
-  .toggle-switch.active { background: #2563eb; }
-  .toggle-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-  .toggle-switch.active::after { left: 18px; }
-  .splash-bg {
-    background-color: #0f172a;
-    background-image: radial-gradient(#1e3a8a 20%, transparent 20%), radial-gradient(#1e3a8a 20%, transparent 20%);
-    background-position: 0 0, 15px 15px;
-    background-size: 30px 30px;
-  }
+  .input-field { width: 100%; padding: 12px 16px; border: 1px solid #e2e8f0; border-radius: 12px; outline: none; transition: all 0.2s; font-size: 14px; }
+  .input-field:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.1); }
+  .btn-primary { width: 100%; padding: 14px; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #fff; font-weight: 600; border-radius: 12px; border: none; font-size: 15px; cursor: pointer; transition: all 0.2s; }
+  .btn-primary:active { transform: scale(0.98); }
 </style>
+
+
+
 
 <style>
   :root {
@@ -1708,22 +1704,9 @@
 
 </div>
 
-<div id="toast" class="toast"></div>
 
-  <!-- ============ PAYMENT DETAILS MODAL ============ -->
-  <div class="modal-overlay" id="modal-payment">
-    <div class="bg-white rounded-2xl w-full p-5 shadow-2xl relative text-left" style="max-width: 360px; max-height: 90vh; overflow-y: auto;">
-      <div class="flex justify-between items-center pb-3 border-b border-gray-100">
-        <h3 class="font-bold text-gray-800 text-base">Payment Details</h3>
-        <i class="fas fa-times text-gray-400 cursor-pointer text-lg" onclick="hideModal('modal-payment')"></i>
-      </div>
 
-      <!-- Timer & Amount Banner -->
-      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-3 flex items-center justify-between">
-        <div>
-          <div class="text-[10px] text-blue-500 font-medium">AMOUNT TO PAY</div>
-          <div class="text-xl font-black text-blue-600" id="pay-modal-amount">₹0</div>
-        </div>
+  
         <div class="text-right">
           <div class="text-[10px] text-gray-400">Time Remaining</div>
           <div class="text-xs font-bold text-red-500 font-mono" id="pay-modal-timer">15:00</div>
@@ -1781,7 +1764,29 @@
         Submit Deposit
       </button>
     </div>
-  </div>
+  
+  
+  
+
+  
+  
+
+  <div id="toast" class="toast"></div>
+  <!-- ============ PAYMENT DETAILS MODAL ============ -->
+  <div class="modal-overlay" id="modal-payment">
+    <div class="bg-white rounded-2xl w-full p-5 shadow-2xl relative text-left" style="max-width: 360px; max-height: 90vh; overflow-y: auto;">
+      <div class="flex justify-between items-center pb-3 border-b border-gray-100">
+        <h3 class="font-bold text-gray-800 text-base">Payment Details</h3>
+        <i class="fas fa-times text-gray-400 cursor-pointer text-lg" onclick="hideModal('modal-payment')"></i>
+      </div>
+
+      <!-- Timer & Amount Banner -->
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-3 flex items-center justify-between">
+        <div>
+          <div class="text-[10px] text-blue-500 font-medium">AMOUNT TO PAY</div>
+          <div class="text-xl font-black text-blue-600" id="pay-modal-amount">₹0</div>
+        </div>
+</div>
 
 <script>
   let currentQuote = null;

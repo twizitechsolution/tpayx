@@ -10,6 +10,9 @@
 
 
 
+
+
+
 <style>
   * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -43,6 +46,45 @@
   .screen.active {
     display: flex !important;
   }
+  .modal-overlay {
+    display: none !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: rgba(15, 23, 42, 0.75) !important;
+    backdrop-filter: blur(4px) !important;
+    z-index: 1000 !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 16px !important;
+    box-sizing: border-box !important;
+  }
+  .modal-overlay.show {
+    display: flex !important;
+  }
+  .toast {
+    display: none !important;
+    position: absolute !important;
+    bottom: 80px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    background: rgba(15, 23, 42, 0.9) !important;
+    color: #fff !important;
+    padding: 10px 20px !important;
+    border-radius: 9999px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    z-index: 1100 !important;
+    white-space: nowrap !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+  }
+  .toast.show {
+    display: block !important;
+  }
   .scroll-area {
     flex: 1 !important;
     overflow-y: auto !important;
@@ -72,6 +114,9 @@
   .btn-primary { width: 100%; padding: 14px; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #fff; font-weight: 600; border-radius: 12px; border: none; font-size: 15px; cursor: pointer; transition: all 0.2s; }
   .btn-primary:active { transform: scale(0.98); }
 </style>
+
+
+
 
 
 
@@ -1633,22 +1678,9 @@
 
 </div>
 
-<div id="toast" class="toast"></div>
 
-  <!-- ============ PAYMENT DETAILS MODAL ============ -->
-  <div class="modal-overlay" id="modal-payment">
-    <div class="bg-white rounded-2xl w-full p-5 shadow-2xl relative text-left" style="max-width: 360px; max-height: 90vh; overflow-y: auto;">
-      <div class="flex justify-between items-center pb-3 border-b border-gray-100">
-        <h3 class="font-bold text-gray-800 text-base">Payment Details</h3>
-        <i class="fas fa-times text-gray-400 cursor-pointer text-lg" onclick="hideModal('modal-payment')"></i>
-      </div>
 
-      <!-- Timer & Amount Banner -->
-      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-3 flex items-center justify-between">
-        <div>
-          <div class="text-[10px] text-blue-500 font-medium">AMOUNT TO PAY</div>
-          <div class="text-xl font-black text-blue-600" id="pay-modal-amount">₹0</div>
-        </div>
+  
         <div class="text-right">
           <div class="text-[10px] text-gray-400">Time Remaining</div>
           <div class="text-xs font-bold text-red-500 font-mono" id="pay-modal-timer">15:00</div>
@@ -1706,7 +1738,29 @@
         Submit Deposit
       </button>
     </div>
-  </div>
+  
+  
+  
+
+  
+  
+
+  <div id="toast" class="toast"></div>
+  <!-- ============ PAYMENT DETAILS MODAL ============ -->
+  <div class="modal-overlay" id="modal-payment">
+    <div class="bg-white rounded-2xl w-full p-5 shadow-2xl relative text-left" style="max-width: 360px; max-height: 90vh; overflow-y: auto;">
+      <div class="flex justify-between items-center pb-3 border-b border-gray-100">
+        <h3 class="font-bold text-gray-800 text-base">Payment Details</h3>
+        <i class="fas fa-times text-gray-400 cursor-pointer text-lg" onclick="hideModal('modal-payment')"></i>
+      </div>
+
+      <!-- Timer & Amount Banner -->
+      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-3 flex items-center justify-between">
+        <div>
+          <div class="text-[10px] text-blue-500 font-medium">AMOUNT TO PAY</div>
+          <div class="text-xl font-black text-blue-600" id="pay-modal-amount">₹0</div>
+        </div>
+</div>
 
 <script>
   let currentQuote = null;
@@ -1726,7 +1780,7 @@
 
     try {
       showToast('Fetching receiver details...');
-      const res = Txait fetch(`${BASE_URL}/api/orders/quote`, {
+      const res = await fetch(`${BASE_URL}/api/orders/quote`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1735,7 +1789,7 @@
         body: JSON.stringify({ amount, assetType })
       });
 
-      const data = Txait res.json();
+      const data = await res.json();
       if (!res.ok) {
         showToast(data.error || 'Failed to fetch payment details');
         return;
@@ -1794,7 +1848,7 @@
     let screenshotBase64 = null;
     if (fileInput && fileInput.files && fileInput.files[0]) {
       const file = fileInput.files[0];
-      screenshotBase64 = Txait new Promise((resolve) => {
+      screenshotBase64 = await new Promise((resolve) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve(reader.result);
         reader.readAsDataURL(file);
@@ -1809,7 +1863,7 @@
     const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
 
     try {
-      const res = Txait fetch(`${BASE_URL}/api/orders`, {
+      const res = await fetch(`${BASE_URL}/api/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1821,11 +1875,11 @@
           utr: utrInput,
           screenshot: screenshotBase64,
           receiver_id: currentQuote.receiver_id,
-          withdrTxal_id: currentQuote.withdrTxal_id
+          withdrawal_id: currentQuote.withdrawal_id
         })
       });
 
-      const data = Txait res.json();
+      const data = await res.json();
       btn.disabled = false;
       btn.textContent = 'Submit Deposit';
 
@@ -1837,7 +1891,7 @@
 
       if (modalTimerInterval) clearInterval(modalTimerInterval);
       hideModal('modal-payment');
-      showToast('Deposit submitted successfully! Txaiting verification.');
+      showToast('Deposit submitted successfully! awaiting verification.');
       showScreen('screen-history');
     } catch (err) {
       btn.disabled = false;
@@ -1895,7 +1949,7 @@
       body: JSON.stringify({ mobile, isSignup: screenType === 'signup' })
     })
     .then(async res => {
-      const data = Txait res.json();
+      const data = await res.json();
       if (res.ok) {
         showToast(data.message || 'OTP sent successfully!');
         let countdown = 60;
@@ -1964,7 +2018,7 @@
       body: JSON.stringify({ mobile, password, confirmPassword: confirmPassword || password, invitationCode, otp })
     })
     .then(async res => {
-      const data = Txait res.json();
+      const data = await res.json();
       if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Create Account';
@@ -2008,7 +2062,7 @@
       body: JSON.stringify({ mobile, password, otp: otp || '123456' })
     })
     .then(async res => {
-      const data = Txait res.json();
+      const data = await res.json();
       if (!res.ok) {
         if (res.status === 403 || (data.error && data.error.includes('blocked'))) {
           alert('Your ID has been blocked by admin');
