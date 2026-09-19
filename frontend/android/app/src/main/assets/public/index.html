@@ -17,10 +17,12 @@
 
 
 
+
+
 <style>
   * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
   html, body {
-    background: #0f172a !important;
+    background: #f5f7fa !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100vw !important;
@@ -29,26 +31,37 @@
     overflow: hidden !important;
   }
   .phone-frame {
-    width: 100vw !important;
-    max-width: 100% !important;
-    height: 100vh !important;
-    height: 100dvh !important;
+    width: 100% !important;
+    height: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    position: relative !important;
+    position: absolute !important;
+    inset: 0 !important;
     overflow: hidden !important;
+    background: #f5f7fa !important;
+  }
+  .status-bar {
+    display: none !important;
   }
   .screen {
     display: none !important;
     height: 100% !important;
     width: 100% !important;
     flex-direction: column !important;
-    position: relative !important;
+    position: absolute !important;
+    inset: 0 !important;
+    background: #f5f7fa !important;
   }
   .screen.active {
     display: flex !important;
+  }
+  #screen-splash {
+    background: linear-gradient(180deg, #1d6bf3 0%, #7db3fd 100%) !important;
+  }
+  #screen-login {
+    background: #0f172a !important;
   }
   .modal-overlay {
     display: none !important;
@@ -129,32 +142,32 @@
 
 
 
+
+
 </head>
 <body class="flex items-center justify-center min-h-screen">
 
 <div class="phone-frame">
   <!-- Status Bar -->
-  <div class="status-bar">
-    <span>11:10</span>
-    <div class="flex items-center gap-1">
-      <i class="fas fa-signal text-xs"></i>
-      <i class="fas fa-wifi text-xs"></i>
-      <i class="fas fa-battery-three-quarters text-xs"></i>
-      <span class="text-xs">55%</span>
-    </div>
-  </div>
+  
 
   <!-- ============ SPLASH SCREEN ============ -->
-  <div class="screen active" id="screen-splash" style="background: #0f172a;">
+  <div class="screen active" id="screen-splash" style="background: linear-gradient(180deg, #1d6bf3 0%, #7db3fd 100%);">
     <div class="flex flex-col items-center justify-center h-full splash-bg text-white">
-      <div class="relative w-32 h-32 flex items-center justify-center mb-8 bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl">
-        <span class="text-white text-5xl font-black tracking-tighter">T<span class="text-blue-500">x</span></span>
+      <div class="relative w-36 h-36 flex items-center justify-center mb-6">
+        <svg viewBox="0 0 100 60" class="w-28 h-28 fill-current text-white">
+          <path d="M30 10 C15 10, 5 20, 5 30 C5 40, 15 50, 30 50 C40 50, 47 42, 50 35 C53 42, 60 50, 70 50 C85 50, 95 40, 95 30 C95 20, 85 10, 70 10 C60 10, 53 18, 50 25 C47 18, 40 10, 30 10 Z M30 20 C38 20, 43 27, 43 30 C43 33, 38 40, 30 40 C22 40, 17 33, 17 30 C17 27, 22 20, 30 20 Z M70 20 C78 20, 83 27, 83 30 C83 33, 78 40, 70 40 C62 40, 57 33, 57 30 C57 27, 62 20, 70 20 Z" />
+        </svg>
       </div>
-      <h1 class="text-3xl font-bold tracking-wide text-white">TpayX</h1>
-      <p class="text-sm mt-2 text-gray-400">Fast. Secure. Simple.</p>
+      <h1 class="text-4xl font-extrabold tracking-wide text-white">TpayX</h1>
+      <p class="text-sm mt-2 text-white/90 font-medium">Fast. Secure. Simple.</p>
       <div class="absolute bottom-10 flex flex-col items-center">
-        <div class="w-8 h-8 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin"></div>
+        <div class="w-8 h-8 border-4 border-white/30 border-t-white rounded-full animate-spin"></div>
       </div>
+    </div>
+  </div>
+    </div>
+  </div>
     </div>
   </div>
 
@@ -1679,84 +1692,6 @@
               Learn more <i class="fas fa-arrow-right text-xs"></i>
             </button>
           </div>
-
-
-<div id="toast" class="toast"></div>
-
-  <!-- ============ PAYMENT DETAILS MODAL ============ -->
-  <div class="modal-overlay" id="modal-payment">
-    <div class="bg-white rounded-2xl w-full p-5 shadow-2xl relative text-left" style="max-width: 360px; max-height: 90vh; overflow-y: auto;">
-      <div class="flex justify-between items-center pb-3 border-b border-gray-100">
-        <h3 class="font-bold text-gray-800 text-base">Payment Details</h3>
-        <i class="fas fa-times text-gray-400 cursor-pointer text-lg" onclick="hideModal('modal-payment')"></i>
-      </div>
-
-      <!-- Timer & Amount Banner -->
-      <div class="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-3 flex items-center justify-between">
-        <div>
-          <div class="text-[10px] text-blue-500 font-medium">AMOUNT TO PAY</div>
-          <div class="text-xl font-black text-blue-600" id="pay-modal-amount">₹0</div>
-        </div>
-        <div class="text-right">
-          <div class="text-[10px] text-gray-400">Time Remaining</div>
-          <div class="text-xs font-bold text-red-500 font-mono" id="pay-modal-timer">15:00</div>
-        </div>
-      </div>
-
-      <!-- Receiver Account Details -->
-      <div class="mt-3 space-y-2 bg-gray-50 rounded-xl p-3 text-xs border border-gray-100">
-        <div class="flex justify-between items-center">
-          <span class="text-gray-500">Receiver Name</span>
-          <span class="font-semibold text-gray-800" id="pay-modal-name">---</span>
-        </div>
-        <div class="flex justify-between items-center">
-          <span class="text-gray-500">UPI ID</span>
-          <div class="flex items-center gap-1">
-            <span class="font-bold text-blue-600" id="pay-modal-upi">---</span>
-            <button onclick="copyText('pay-modal-upi')" class="text-[10px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-semibold">COPY</button>
-          </div>
-        </div>
-        <div class="flex justify-between items-center">
-          <span class="text-gray-500">Bank Name</span>
-          <span class="font-semibold text-gray-800" id="pay-modal-bank">---</span>
-        </div>
-        <div class="flex justify-between items-center">
-          <span class="text-gray-500">Account Number</span>
-          <div class="flex items-center gap-1">
-            <span class="font-bold text-gray-800" id="pay-modal-account">---</span>
-            <button onclick="copyText('pay-modal-account')" class="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded font-semibold">COPY</button>
-          </div>
-        </div>
-        <div class="flex justify-between items-center">
-          <span class="text-gray-500">IFSC Code</span>
-          <span class="font-semibold text-gray-800" id="pay-modal-ifsc">---</span>
-        </div>
-      </div>
-
-      <!-- UTR Input & Screenshot -->
-      <div class="mt-4 space-y-3">
-        <div>
-          <label class="text-xs text-gray-600 font-semibold">12-Digit UTR / Ref Number <span class="text-red-500">*</span></label>
-          <input type="text" id="pay-modal-utr-input" class="input-field mt-1" placeholder="Enter 12-digit UTR transaction number" maxlength="12">
-        </div>
-
-        <div>
-          <label class="text-xs text-gray-600 font-semibold">Payment Screenshot (Optional)</label>
-          <input type="file" id="pay-modal-file-input" accept="image/*" class="input-field mt-1 text-xs">
-        </div>
-      </div>
-
-      <div class="text-[10px] text-gray-400 mt-2 leading-tight">
-        <i class="fas fa-shield-alt text-green-500 mr-1"></i> Pay the amount above to the receiver details, enter UTR number, and click Submit Deposit. Fake or duplicate UTRs are automatically rejected.
-      </div>
-
-      <button id="pay-modal-submit-btn" onclick="submitDepositOrder()" class="w-full gradient-green text-white py-3 rounded-xl text-sm font-bold mt-4 shadow-lg">
-        Submit Deposit
-      </button>
-    </div>
-  </div>
-
-</div>
 
 
 <div id="toast" class="toast"></div>
