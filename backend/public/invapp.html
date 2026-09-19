@@ -20,8 +20,8 @@
     position: relative;
     margin: 20px auto;
   }
-  .screen { display: none; height: 100%; flex-direction: column; position: relative; }
-  .screen.active { display: flex; }
+  .screen { display: none !important; height: 100%; flex-direction: column; position: relative; width: 100%; }
+  .screen.active { display: flex !important; }
   .scroll-area { flex: 1; overflow-y: auto; overflow-x: hidden; }
   .scroll-area::-webkit-scrollbar { display: none; }
   .status-bar {
