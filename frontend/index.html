@@ -10,8 +10,9 @@
     <script type="module" crossorigin src="./assets/index-CVMZi8sX.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CKXErF3w.css">
 <style>
+  * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
   html, body {
-    background: #0f172a !important;
+    background: #f5f7fa !important;
     margin: 0 !important;
     padding: 0 !important;
     width: 100vw !important;
@@ -19,6 +20,19 @@
     height: 100dvh !important;
     overflow: hidden !important;
   }
+  #root {
+    width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+  .scroll-area {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding-top: max(48px, env(safe-area-inset-top)) !important;
+    padding-bottom: 84px !important;
+  }
+  .scroll-area::-webkit-scrollbar { display: none; }
   .phone-frame {
     width: 100vw !important;
     max-width: 100% !important;
@@ -30,11 +44,10 @@
     box-shadow: none !important;
   }
   .nav-bar {
-    height: 60px !important;
-    min-height: 60px !important;
-    max-height: 60px !important;
-    padding-top: 4px !important;
-    padding-bottom: 4px !important;
+    height: auto !important;
+    min-height: 64px !important;
+    padding-top: 6px !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom)) !important;
     background: #ffffff !important;
     border-top: 1px solid #f1f5f9 !important;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.05) !important;
