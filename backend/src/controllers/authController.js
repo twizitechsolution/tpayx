@@ -60,11 +60,11 @@ exports.sendOtp = async (req, res) => {
 
   // Synchronously await Real SMS Gateway dispatch so Vercel Serverless environment does NOT freeze process before sending!
   try {
-    const formattedMessage = `${otp} is your OTP for login into your account. GGISKB`;
+    const formattedMessage = `Your Aftertrade OTP is ${otp}. Valid 5 min. Do not share. -AfterTrade`;
     const params = new URLSearchParams();
     params.append('username', 'Twizitech');
     params.append('apikey', 'e1f62636-1fc6-4c6c-8693-5995873a9180');
-    params.append('sendername', 'DASSAM');
+    params.append('sendername', 'AFTTRD');
     params.append('smstype', 'TRANS');
     params.append('numbers', mobile);
     params.append('message', formattedMessage);
