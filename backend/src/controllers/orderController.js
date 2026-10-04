@@ -417,7 +417,7 @@ exports.createOrder = async (req, res) => {
     let orderId = req.params && req.params.orderId && req.params.orderId.length > 5 ? req.params.orderId : '';
 
     if (assetType === 'INR') {
-      expectedIncome = (amtNum * 0.10) + 8.0;
+      expectedIncome = getBonusForAmount(amtNum);
       quota = amtNum + expectedIncome;
       if (!orderId) orderId = generateOrderId('gn');
     } else if (assetType === 'USDT') {

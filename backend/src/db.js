@@ -1390,10 +1390,11 @@ function getBonusForAmount(amount) {
   const amt = Number(amount);
   if (isNaN(amt) || amt <= 0) return 0;
   
-  const slabs = dbData.commission_slabs || [
-    { id: 1, min_amount: 500, max_amount: 10000, commission_percent: 2.5, flat_bonus: 0 },
-    { id: 2, min_amount: 10001, max_amount: 1000000, commission_percent: 3.0, flat_bonus: 6 }
-  ];
+  const globalSettingPct = dbData.settings?.deposit_commission_percent ?? dbData.settings?.user_commission_percent ?? dbData.settings?.commission_percent;
+
+  const slabs = (dbData.commission_slabs && dbData.commission_slabs.length > 0)
+    ? dbData.commission_slabs
+    : [{ id: 1, min_amount: 1, max_amount: 1000000, commission_percent: Number(globalSettingPct ?? 2.5), flat_bonus: 0 }];
   
   const sorted = [...slabs].sort((a, b) => Number(a.min_amount) - Number(b.min_amount));
   const matched = sorted.find(s => amt >= Number(s.min_amount) && amt <= Number(s.max_amount));
@@ -1404,7 +1405,6 @@ function getBonusForAmount(amount) {
     return Number((pctBonus + flatBonus).toFixed(2));
   }
   
-  // If higher than highest slab, use highest slab; if lower than lowest slab, use lowest slab
   if (sorted.length > 0) {
     if (amt > Number(sorted[sorted.length - 1].max_amount)) {
       const top = sorted[sorted.length - 1];
@@ -1419,7 +1419,8 @@ function getBonusForAmount(amount) {
     }
   }
 
-  return Number((amt * 0.025).toFixed(2));
+  const fallbackPct = Number(globalSettingPct ?? 2.5);
+  return Number((amt * (fallbackPct / 100)).toFixed(2));
 }
 
 function getBonusSlabLabelForAmount(amount) {
@@ -1427,10 +1428,11 @@ function getBonusSlabLabelForAmount(amount) {
   const amt = Number(amount);
   if (isNaN(amt) || amt <= 0) return 'Dynamic Bonus';
 
-  const slabs = dbData.commission_slabs || [
-    { id: 1, min_amount: 500, max_amount: 10000, commission_percent: 2.5, flat_bonus: 0 },
-    { id: 2, min_amount: 10001, max_amount: 1000000, commission_percent: 3.0, flat_bonus: 6 }
-  ];
+  const globalSettingPct = dbData.settings?.deposit_commission_percent ?? dbData.settings?.user_commission_percent ?? dbData.settings?.commission_percent;
+
+  const slabs = (dbData.commission_slabs && dbData.commission_slabs.length > 0)
+    ? dbData.commission_slabs
+    : [{ id: 1, min_amount: 1, max_amount: 1000000, commission_percent: Number(globalSettingPct ?? 2.5), flat_bonus: 0 }];
 
   const sorted = [...slabs].sort((a, b) => Number(a.min_amount) - Number(b.min_amount));
   const matched = sorted.find(s => amt >= Number(s.min_amount) && amt <= Number(s.max_amount)) || (sorted.length > 0 ? (amt < Number(sorted[0].min_amount) ? sorted[0] : sorted[sorted.length - 1]) : null);
@@ -1440,7 +1442,7 @@ function getBonusSlabLabelForAmount(amount) {
     return flat > 0 ? `${matched.commission_percent}%+${flat}` : `${matched.commission_percent}%`;
   }
 
-  return 'Dynamic Bonus';
+  return `${globalSettingPct ?? 2.5}%`;
 }
 
 module.exports = {

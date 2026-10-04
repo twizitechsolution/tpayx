@@ -651,7 +651,7 @@ app.get('/api/admin/settings', adminAuth, async (req, res) => {
 
 app.post('/api/admin/settings', adminAuth, async (req, res) => {
   try {
-    const { level1_commission, level2_commission, level3_commission, min_plan_amount, max_plan_amount, telegram_link, winpey_api_key, winpey_api_secret, payment_mode, upi_ids } = req.body;
+    const { level1_commission, level2_commission, level3_commission, min_plan_amount, max_plan_amount, telegram_link, winpey_api_key, winpey_api_secret, payment_mode, upi_ids, deposit_commission_percent, user_commission_percent, commission_percent } = req.body;
     loadDb();
     dbData.settings = dbData.settings || {};
     dbData.settings.level1_commission = Number(level1_commission || 0);
@@ -659,6 +659,24 @@ app.post('/api/admin/settings', adminAuth, async (req, res) => {
     dbData.settings.level3_commission = Number(level3_commission || 0);
     dbData.settings.min_plan_amount = Number(min_plan_amount ?? 200);
     dbData.settings.max_plan_amount = Number(max_plan_amount ?? 100000);
+
+    const depPct = deposit_commission_percent ?? user_commission_percent ?? commission_percent;
+    if (depPct !== undefined && depPct !== null && depPct !== '') {
+      const pVal = Number(depPct);
+      dbData.settings.deposit_commission_percent = pVal;
+      dbData.settings.user_commission_percent = pVal;
+      dbData.settings.commission_percent = pVal;
+
+      if (dbData.commission_slabs && dbData.commission_slabs.length > 0) {
+        dbData.commission_slabs.forEach(s => {
+          s.commission_percent = pVal;
+        });
+      } else {
+        dbData.commission_slabs = [
+          { id: 1, min_amount: 1, max_amount: 1000000, commission_percent: pVal, flat_bonus: 0 }
+        ];
+      }
+    }
     dbData.settings.telegram_link = telegram_link || "https://t.me/TpayX";
     dbData.settings.winpey_api_key = winpey_api_key || "488b923c-2b03-465e-b9df-55d018124e0c";
     dbData.settings.winpey_api_secret = winpey_api_secret || "fc4a56a2439f47c19213c747ee5693c6";
