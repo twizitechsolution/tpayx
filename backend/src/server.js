@@ -959,10 +959,11 @@ app.post('/api/user/register-fcm', authMiddleware, async (req, res) => {
 app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
   try {
     loadDb();
-    const list = dbData.orders
-      .filter(o => o.receiver_id == req.user.id && o.status === 'Confirming')
+    const userId = req.user.id;
+    const requests = (dbData.orders || [])
+      .filter(o => o.receiver_id == userId && o.status === 'Confirming')
       .map(o => {
-        const buyer = dbData.users.find(u => u.id == o.user_id) || {};
+        const buyer = (dbData.users || []).find(u => u.id == o.user_id) || {};
         return {
           order_id: o.order_id,
           amount: o.amount,
@@ -977,7 +978,60 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
         };
       });
 
-    return res.json({ success: true, requests: list });
+    const completedSales = (dbData.orders || []).filter(o => o.receiver_id == userId && o.status === 'Completed');
+    const totalSalesCount = completedSales.length;
+    const totalSalesAmount = Number(completedSales.reduce((sum, o) => sum + Number(o.amount || 0), 0).toFixed(2));
+
+    const history = (dbData.orders || [])
+      .filter(o => o.receiver_id == userId)
+      .slice(-20)
+      .reverse()
+      .map(o => ({
+        id: o.id,
+        order_id: o.order_id,
+        amount: o.amount,
+        utr: o.utr,
+        status: o.status,
+        created_at: o.created_at
+      }));
+
+    return res.json({
+      success: true,
+      requests,
+      stats: {
+        total_sales_count: totalSalesCount,
+        total_sales_amount: totalSalesAmount,
+        pending_count: requests.length,
+        usdt_rate: 110.00,
+        rupee_rate_label: '2.5% + 6'
+      },
+      history
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Reject/Dispute P2P sell request by receiver
+app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const userId = req.user.id;
+
+    loadDb();
+    const order = dbData.orders.find(o => o.order_id === orderId && o.receiver_id == userId);
+    if (!order) {
+      return res.status(404).json({ error: 'Matched order not found' });
+    }
+
+    if (order.status !== 'Confirming') {
+      return res.status(400).json({ error: 'Order is not in confirming status' });
+    }
+
+    order.status = 'Admin Review';
+    saveDb();
+
+    return res.json({ success: true, message: 'Order rejected and sent to Admin Review.' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
