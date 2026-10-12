@@ -776,6 +776,94 @@ app.get('/api/admin/users/:userId/withdrawals', adminAuth, async (req, res) => {
   }
 });
 
+// Comprehensive User Details Endpoint for Admin Panel
+app.get('/api/admin/users/:userId/details', adminAuth, async (req, res) => {
+  try {
+    loadDb();
+    const userId = Number(req.params.userId);
+    const user = (dbData.users || []).find(u => u.id === userId) || await query.get('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // 1. Bank Accounts
+    const sqliteBanks = await query.all('SELECT * FROM bank_accounts WHERE user_id = ? ORDER BY id DESC', [userId]);
+    const memBanks = (dbData.bank_accounts || []).filter(b => b.user_id == userId);
+    const bankAccounts = (sqliteBanks && sqliteBanks.length > 0) ? sqliteBanks : memBanks;
+
+    // 2. Deposit Orders
+    const sqliteDeposits = await query.all('SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 50', [userId]);
+    const memDeposits = (dbData.orders || []).filter(o => o.user_id == userId).slice(-50).reverse();
+    const deposits = (sqliteDeposits && sqliteDeposits.length > 0) ? sqliteDeposits : memDeposits;
+
+    // 3. Withdrawal Records
+    const sqliteWithdrawals = await query.all('SELECT * FROM transactions WHERE user_id = ? AND type = "Withdraw" ORDER BY id DESC LIMIT 50', [userId]);
+    const memWithdrawals = (dbData.transactions || []).filter(t => t.user_id == userId && t.type === 'Withdraw').slice(-50).reverse();
+    const withdrawals = (sqliteWithdrawals && sqliteWithdrawals.length > 0) ? sqliteWithdrawals : memWithdrawals;
+
+    // 4. Downline Team Members
+    const inviteCode = user.invite_code || `tp${user.uid}`;
+    const sqliteTeam = await query.all('SELECT id, uid, username, mobile, inr_balance, bcoin_balance, created_at FROM users WHERE invited_by = ? ORDER BY id DESC', [inviteCode]);
+    const memTeam = (dbData.users || []).filter(u => u.invited_by === inviteCode || u.invited_by === user.uid || u.invited_by === String(user.id)).map(u => ({
+      id: u.id,
+      uid: u.uid,
+      username: u.username,
+      mobile: u.mobile,
+      inr_balance: u.inr_balance,
+      bcoin_balance: u.bcoin_balance,
+      created_at: u.created_at
+    }));
+    const team = (sqliteTeam && sqliteTeam.length > 0) ? sqliteTeam : memTeam;
+
+    // 5. Active / Subscribed Plans
+    const plans = (dbData.orders || []).filter(o => o.user_id == userId && o.status === 'Completed').slice(-20).reverse();
+
+    return res.json({
+      success: true,
+      details: {
+        user: {
+          id: user.id,
+          uid: user.uid,
+          username: user.username || user.name || 'User',
+          mobile: user.mobile,
+          inr_balance: Number(user.inr_balance || 0),
+          bcoin_balance: Number(user.bcoin_balance || 0),
+          total_earnings: Number(user.total_earnings || 0),
+          today_profit: Number(user.today_profit || 0),
+          invite_code: inviteCode,
+          invited_by: user.invited_by || 'None',
+          is_blocked: Boolean(user.is_blocked),
+          created_at: user.created_at
+        },
+        bank_accounts: bankAccounts,
+        deposits,
+        withdrawals,
+        team,
+        plans
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching admin user details:', err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Public Commission Slabs Endpoint
+app.get(['/api/commission-slabs', '/api/user/commission-slabs'], (req, res) => {
+  try {
+    loadDb();
+    const slabs = dbData.commission_slabs || [];
+    const globalPercent = dbData.settings?.deposit_commission_percent ?? dbData.settings?.user_commission_percent ?? dbData.settings?.commission_percent ?? 2.5;
+    return res.json({
+      success: true,
+      global_percent: Number(globalPercent),
+      slabs
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/admin/users/:userId/balance', adminAuth, async (req, res) => {
   try {
     const { bcoin_balance } = req.body;
@@ -960,11 +1048,13 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
   try {
     loadDb();
     const userId = req.user.id;
+    const now = Date.now();
     const requests = (dbData.orders || [])
-      .filter(o => o.receiver_id == userId && o.status === 'Confirming')
+      .filter(o => o.receiver_id == userId && (o.status === 'Confirming' || o.status === 'Admin Review' || o.status === 'Disputed'))
       .map(o => {
         const buyer = (dbData.users || []).find(u => u.id == o.user_id) || {};
         return {
+          id: o.id || o.order_id,
           order_id: o.order_id,
           amount: o.amount,
           utr: o.utr,
@@ -1019,13 +1109,13 @@ app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => 
     const userId = req.user.id;
 
     loadDb();
-    const order = dbData.orders.find(o => o.order_id === orderId && o.receiver_id == userId);
+    const order = dbData.orders.find(o => (o.order_id === orderId || o.id == orderId) && o.receiver_id == userId);
     if (!order) {
       return res.status(404).json({ error: 'Matched order not found' });
     }
 
-    if (order.status !== 'Confirming') {
-      return res.status(400).json({ error: 'Order is not in confirming status' });
+    if (order.status !== 'Confirming' && order.status !== 'Admin Review') {
+      return res.status(400).json({ error: 'Order is not in pending confirming status' });
     }
 
     order.status = 'Admin Review';
@@ -1044,13 +1134,13 @@ app.post('/api/orders/:orderId/p2p-receive', authMiddleware, async (req, res) =>
     const userId = req.user.id;
 
     loadDb();
-    const order = dbData.orders.find(o => o.order_id === orderId && o.receiver_id == userId);
+    const order = dbData.orders.find(o => (o.order_id === orderId || o.id == orderId) && o.receiver_id == userId);
     if (!order) {
       return res.status(404).json({ error: 'Matched order not found' });
     }
 
-    if (order.status !== 'Confirming') {
-      return res.status(400).json({ error: 'Order is not in confirming status' });
+    if (order.status !== 'Confirming' && order.status !== 'Admin Review') {
+      return res.status(400).json({ error: 'Order is not in pending confirming status' });
     }
 
     const receiver = dbData.users.find(u => u.id == userId);
@@ -1490,10 +1580,14 @@ setInterval(() => {
             }
           }
         } else if (order.status === 'Confirming') {
-          // DO NOT AUTO-APPROVE! Change status to 'Admin Review' for manual Admin verification
-          order.status = 'Admin Review';
+          // 15-minute countdown expired: mark timer expired, but allow 2-hour window before escalating to Admin Review
           order.is_timer_expired = true;
-          console.log(`[TimerExpiry] Order ${order.order_id} 15-min window expired. Status set to Admin Review (NO auto-approval).`);
+          const orderTime = new Date(order.created_at || order.timer_expiry).getTime();
+          const twoHoursMs = 2 * 60 * 60 * 1000;
+          if (now.getTime() - orderTime >= twoHoursMs) {
+            order.status = 'Admin Review';
+            console.log(`[TimerExpiry] Order ${order.order_id} 2-hour window expired. Status escalated to Admin Review.`);
+          }
         }
       }
     });
@@ -1734,10 +1828,15 @@ app.get('/api/cron/order-cleanup', async (req, res) => {
     let cleaned = 0;
     if (Array.isArray(dbData.orders)) {
       dbData.orders.forEach(o => {
-        if (o.status === 'CONFIRMING' || o.status === 'PENDING') {
-          const created = new Date(o.created_at || o.timestamp).getTime();
+        const created = new Date(o.created_at || o.timestamp).getTime();
+        if (o.status === 'PENDING') {
           if (now - created >= 15 * 60 * 1000) {
             o.status = 'EXPIRED';
+            cleaned++;
+          }
+        } else if (o.status === 'CONFIRMING' || o.status === 'Confirming') {
+          if (now - created >= 2 * 60 * 60 * 1000) {
+            o.status = 'Admin Review';
             cleaned++;
           }
         }

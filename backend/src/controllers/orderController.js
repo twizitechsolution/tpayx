@@ -189,8 +189,8 @@ exports.getPaymentQuote = async (req, res) => {
       quota = amtNum + expectedIncome;
       tempOrderId = generateOrderId('gn');
     } else if (assetType === 'USDT') {
-      const inrValue = amtNum * 100.0;
-      expectedIncome = inrValue * 0.20;
+      const inrValue = amtNum * 110.0;
+      expectedIncome = inrValue * 0.10;
       quota = inrValue + expectedIncome;
       tempOrderId = generateOrderId('gu');
     } else {
@@ -421,8 +421,8 @@ exports.createOrder = async (req, res) => {
       quota = amtNum + expectedIncome;
       if (!orderId) orderId = generateOrderId('gn');
     } else if (assetType === 'USDT') {
-      const inrValue = amtNum * 100.0;
-      expectedIncome = inrValue * 0.20;
+      const inrValue = amtNum * 110.0;
+      expectedIncome = inrValue * 0.10;
       quota = inrValue + expectedIncome;
       if (!orderId) orderId = generateOrderId('gu');
     } else {
