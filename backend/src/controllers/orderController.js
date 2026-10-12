@@ -1,4 +1,4 @@
-const { query, dbData, idTrackers, saveDb, loadDb, getBonusForAmount } = require('../db');
+const { query, dbData, idTrackers, saveDb, saveDbAsync, loadDb, getBonusForAmount } = require('../db');
 
 // Helper to generate custom order IDs: gn/gu + YYYYMMDDHHMMSS + 6-digit uppercase hex
 function generateOrderId(prefix) {
@@ -321,7 +321,7 @@ exports.getPaymentQuote = async (req, res) => {
       timerExpiry,
       receiverDetails
     };
-    saveDb();
+    await saveDbAsync();
     activeQuotes.set(tempOrderId, dbData.quotes[tempOrderId]);
 
     return res.json({
@@ -490,7 +490,7 @@ exports.createOrder = async (req, res) => {
     // Clean up consumed quote from persistent store and memory
     if (dbData.quotes && dbData.quotes[orderId]) delete dbData.quotes[orderId];
     if (activeQuotes.has(orderId)) activeQuotes.delete(orderId);
-    saveDb();
+    await saveDbAsync();
 
     const createdOrder = await query.get('SELECT * FROM orders WHERE order_id = ?', [orderId]);
     return res.status(201).json({
@@ -655,6 +655,7 @@ const executeOrderApproval = async (order, txnId) => {
     // Move up the chain
     currentParentId = parent.parent_id;
   }
+  await saveDbAsync();
 };
 
 // --- SIMULATED ADMIN CONTROL API ---

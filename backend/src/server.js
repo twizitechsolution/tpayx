@@ -3,7 +3,7 @@ dotenv.config();
 
 const express = require('express');
 const cors = require('cors');
-const { initDb, query, dbData, idTrackers, saveDb, loadDb, getBonusForAmount, getBonusSlabLabelForAmount } = require('./db');
+const { initDb, query, dbData, idTrackers, saveDb, saveDbAsync, loadDb, syncDbFromSupabase, syncToSupabase, getBonusForAmount, getBonusSlabLabelForAmount } = require('./db');
 
 // Controllers
 const authController = require('./controllers/authController');
@@ -36,6 +36,17 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// Global State Hydration Middleware - Ensures all serverless containers stay 100% in sync with Supabase
+app.use(async (req, res, next) => {
+  try {
+    const isMutation = req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS';
+    await syncDbFromSupabase(isMutation);
+  } catch (err) {
+    console.warn('[Sync Middleware Warning]:', err.message);
+  }
+  next();
+});
 
 const path = require('path');
 const fs = require('fs');
@@ -591,7 +602,7 @@ app.post('/api/admin/commission-slabs', adminAuth, async (req, res) => {
       flat_bonus: Number(flat_bonus || 0)
     };
     dbData.commission_slabs.push(newSlab);
-    saveDb();
+    await saveDbAsync();
     return res.json({ success: true, slab: newSlab, message: 'Commission slab added successfully!' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -615,7 +626,7 @@ app.put('/api/admin/commission-slabs/:id', adminAuth, async (req, res) => {
       commission_percent: Number(commission_percent),
       flat_bonus: Number(flat_bonus || 0)
     };
-    saveDb();
+    await saveDbAsync();
     return res.json({ success: true, slab: dbData.commission_slabs[idx], message: 'Commission slab updated successfully!' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -628,7 +639,7 @@ app.delete('/api/admin/commission-slabs/:id', adminAuth, async (req, res) => {
     loadDb();
     dbData.commission_slabs = dbData.commission_slabs || [];
     dbData.commission_slabs = dbData.commission_slabs.filter(s => s.id !== id);
-    saveDb();
+    await saveDbAsync();
     return res.json({ success: true, message: 'Commission slab deleted successfully!' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -683,7 +694,7 @@ app.post('/api/admin/settings', adminAuth, async (req, res) => {
     dbData.settings.winpey_api_secret = winpey_api_secret || "fc4a56a2439f47c19213c747ee5693c6";
     dbData.settings.payment_mode = payment_mode || "gateway";
     dbData.settings.upi_ids = upi_ids || "";
-    saveDb();
+    await saveDbAsync();
 
     await query.run('UPDATE settings SET level1_commission = ?, level2_commission = ?, level3_commission = ?, telegram_link = ?, winpey_api_key = ?, winpey_api_secret = ?, payment_mode = ?, upi_ids = ?', [
       Number(level1_commission || 0),
@@ -962,66 +973,6 @@ app.post('/api/withdrawals', authMiddleware, async (req, res) => {
   }
 });
 
-// 2. Buyer submits payment proof
-app.post('/api/orders/:orderId/submit-p2p', authMiddleware, async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    const { utr, screenshot } = req.body;
-
-    if (!utr || !screenshot) {
-      return res.status(400).json({ error: 'Please provide both UTR number and payment screenshot' });
-    }
-
-    loadDb();
-    const order = dbData.orders.find(o => o.order_id === orderId && o.user_id == req.user.id);
-    if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
-
-    // Save screenshot image
-    const screenshotPath = saveBase64File(screenshot, 'screenshot');
-    if (!screenshotPath) {
-      return res.status(400).json({ error: 'Invalid screenshot file upload' });
-    }
-
-    // Check timer expiration
-    if (order.timer_expiry && new Date() > new Date(order.timer_expiry)) {
-      // Auto-expire
-      order.status = 'Canceled';
-      if (order.withdrawal_id) {
-        const w = dbData.withdrawals.find(x => x.id == order.withdrawal_id);
-        if (w) {
-          w.amount_pending += order.amount;
-        }
-      }
-      saveDb();
-      return res.status(400).json({ error: 'Payment window expired (15 minutes time limit exceeded). Order has been canceled.' });
-    }
-
-    // Update order status
-    order.status = 'Confirming';
-    order.utr = utr;
-    order.screenshot_path = screenshotPath;
-    saveDb();
-
-    // Send push notification to receiver
-    const receiver = dbData.users.find(u => u.id == order.receiver_id);
-    if (receiver) {
-      const buyer = dbData.users.find(u => u.id == order.user_id) || { username: 'A depositor', uid: 'N/A' };
-      sendPushNotification(
-        receiver,
-        "🔔 New Payment Received!",
-        `Click to verify ₹${order.amount} payment from depositor (UID: ${buyer.uid})`,
-        { orderId: order.order_id, url: `/my?verifyOrderId=${order.order_id}` }
-      );
-    }
-
-    return res.json({ success: true, message: 'Payment details submitted successfully! Awaiting receiver confirmation.' });
-  } catch (err) {
-    return res.status(500).json({ error: err.message });
-  }
-});
-
 // 2b. Register FCM Device Token for notifications
 app.post('/api/user/register-fcm', authMiddleware, async (req, res) => {
   try {
@@ -1120,7 +1071,7 @@ app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => 
     }
 
     order.status = 'Admin Review';
-    saveDb();
+    await saveDbAsync();
 
     return res.json({ success: true, message: 'Order rejected and sent to Admin Review.' });
   } catch (err) {
@@ -1246,7 +1197,7 @@ app.post('/api/orders/:orderId/p2p-receive', authMiddleware, async (req, res) =>
         }
         currentParentId = parent.parent_id;
       }
-      saveDb();
+      await saveDbAsync();
     } catch (err) {
       console.error('Failed to distribute referral commission:', err);
     }

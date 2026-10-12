@@ -66,23 +66,93 @@ let idTrackers = {
   disputes: 0
 };
 
+let localStateVersion = 0;
+let lastSyncCheckTime = 0;
+let isSyncing = false;
+
+async function syncDbFromSupabase(force = false) {
+  if (!supabase) return;
+  const now = Date.now();
+  if (!force && localStateVersion > 0 && (now - lastSyncCheckTime < 2500)) {
+    return;
+  }
+  lastSyncCheckTime = now;
+  if (isSyncing) return;
+  isSyncing = true;
+  try {
+    const versionPromise = supabase.from('settings').select('value').eq('key', 'app_db_version').single();
+    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase version check timeout')), 2500));
+    const { data: verRow } = await Promise.race([versionPromise, timeoutPromise]).catch(() => ({ data: null }));
+    
+    const remoteVersion = verRow && verRow.value ? Number(verRow.value) : 0;
+    if (force || localStateVersion === 0 || remoteVersion > localStateVersion) {
+      console.log(`[Supabase Hydrate] Pulling remote state (local: ${localStateVersion}, remote: ${remoteVersion})...`);
+      const statePromise = supabase.from('settings').select('value').eq('key', 'app_database_state').single();
+      const stateTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase state fetch timeout')), 3500));
+      const { data: stateRow } = await Promise.race([statePromise, stateTimeout]).catch(() => ({ data: null }));
+
+      if (stateRow && stateRow.value) {
+        const parsed = JSON.parse(stateRow.value);
+        if (parsed && parsed.dbData) {
+          const activeOtps = { ...(parsed.dbData.otps || {}), ...(dbData.otps || {}) };
+          const activeQuotes = { ...(parsed.dbData.quotes || {}), ...(dbData.quotes || {}) };
+
+          for (let key in dbData) delete dbData[key];
+          Object.assign(dbData, parsed.dbData);
+          dbData.otps = activeOtps;
+          dbData.quotes = activeQuotes;
+
+          if (parsed.idTrackers) {
+            for (let key in idTrackers) delete idTrackers[key];
+            Object.assign(idTrackers, parsed.idTrackers);
+          }
+
+          localStateVersion = remoteVersion > 0 ? remoteVersion : Date.now();
+          try {
+            fs.writeFileSync(dbPath, JSON.stringify({ dbData, idTrackers }, null, 2), 'utf8');
+          } catch (e) {}
+          console.log(`[Supabase Hydrate] State hydrated successfully. Users: ${dbData.users.length}, Orders: ${dbData.orders.length}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Supabase Hydrate Warning]:', err.message);
+  } finally {
+    isSyncing = false;
+  }
+}
+
 async function syncToSupabase() {
   if (!supabase) return;
   try {
-    // 1. Sync full state to settings table with timeout
+    const newVersion = Date.now();
+    localStateVersion = newVersion;
+    lastSyncCheckTime = newVersion;
     const fullStateStr = JSON.stringify({ dbData, idTrackers });
+
     await Promise.race([
       supabase.from('settings').upsert([
         {
           key: 'app_database_state',
           value: fullStateStr,
           description: 'Synchronized full database state'
+        },
+        {
+          key: 'app_db_version',
+          value: String(newVersion),
+          description: 'Database synchronization version timestamp'
+        },
+        {
+          key: 'deposit_commission_percent',
+          value: String(dbData.settings?.deposit_commission_percent || 2.5),
+          description: 'Deposit commission percent'
         }
       ]),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase sync timeout')), 4000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase sync timeout')), 8000))
     ]).catch(err => console.warn('[Supabase Sync State Warning]:', err.message));
 
-    // 2. Sync individual tables
+    // Sync individual tables
+    const tablePromises = [];
     if (dbData.users && dbData.users.length > 0) {
       const userRows = dbData.users.map(u => ({
         id: Number(u.id),
@@ -98,7 +168,7 @@ async function syncToSupabase() {
         role: u.id == 1 ? 'admin' : 'user',
         created_at: u.created_at || new Date().toISOString()
       }));
-      await supabase.from('users').upsert(userRows);
+      tablePromises.push(supabase.from('users').upsert(userRows));
     }
     if (dbData.bank_accounts && dbData.bank_accounts.length > 0) {
       const bankRows = dbData.bank_accounts.map(b => ({
@@ -113,7 +183,7 @@ async function syncToSupabase() {
         status: b.status || 'Active',
         created_at: b.created_at || new Date().toISOString()
       }));
-      await supabase.from('bank_accounts').upsert(bankRows);
+      tablePromises.push(supabase.from('bank_accounts').upsert(bankRows));
     }
     if (dbData.orders && dbData.orders.length > 0) {
       const orderRows = dbData.orders.map(o => ({
@@ -128,8 +198,12 @@ async function syncToSupabase() {
         proof_url: o.screenshot_path || null,
         created_at: o.created_at || new Date().toISOString()
       }));
-      await supabase.from('orders').upsert(orderRows);
+      tablePromises.push(supabase.from('orders').upsert(orderRows));
     }
+    await Promise.race([
+      Promise.all(tablePromises),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase tables sync timeout')), 8000))
+    ]).catch(err => console.warn('[Supabase Tables Sync Warning]:', err.message));
   } catch (err) {
     console.error('[Supabase Sync Error]:', err.message);
   }
@@ -148,6 +222,13 @@ function saveDb() {
   }
   if (supabase) {
     syncToSupabase().catch(err => console.error('[Supabase Async Sync Error]:', err.message));
+  }
+}
+
+async function saveDbAsync() {
+  saveDb();
+  if (supabase) {
+    await syncToSupabase();
   }
 }
 
@@ -381,9 +462,9 @@ function loadDb() {
       dbData.quotes = { ...activeQuotes, ...(dbData.quotes || {}) };
 
       // Ensure dynamic tables are initialized
-      dbData.commission_slabs = dbData.commission_slabs || [
-        { id: 1, min_amount: 500, max_amount: 10000, commission_percent: 2.5, flat_bonus: 0 },
-        { id: 2, min_amount: 10001, max_amount: 1000000, commission_percent: 3.0, flat_bonus: 6 }
+      dbData.commission_slabs = (dbData.commission_slabs && dbData.commission_slabs.length > 0) ? dbData.commission_slabs : [
+        { id: 1, min_amount: 500, max_amount: 14000, commission_percent: 2.5, flat_bonus: 0 },
+        { id: 2, min_amount: 14001, max_amount: 1000000, commission_percent: 3.5, flat_bonus: 0 }
       ];
       dbData.products = dbData.products || [];
       dbData.price_ranges = dbData.price_ranges || [];
@@ -508,8 +589,10 @@ const query = {
     }
 
     // 5. SELECT * FROM users WHERE id = ?
-    if (cleanSql.startsWith('SELECT * FROM users WHERE id = ?') || cleanSql.includes('FROM users WHERE id = ?')) {
-      const user = dbData.users.find(u => u.id == params[0]);
+    if (cleanSql.includes('FROM users WHERE id = ?') || /FROM users WHERE id = \d+/i.test(cleanSql)) {
+      const match = cleanSql.match(/FROM users WHERE id = (\d+)/i);
+      const targetId = params[0] !== undefined ? params[0] : (match ? match[1] : null);
+      const user = dbData.users.find(u => u.id == targetId);
       return user ? { ...user } : null;
     }
 
@@ -1201,8 +1284,8 @@ const query = {
 async function initDb() {
   loadDb();
   if (supabase) {
-    console.log('[Supabase Init] Triggering initial sync to Supabase...');
-    await syncToSupabase();
+    console.log('[Supabase Init] Hydrating latest remote state from Supabase on startup...');
+    await syncDbFromSupabase(true);
   }
 
   // Initialize arrays to prevent runtime errors
@@ -1447,7 +1530,10 @@ module.exports = {
   dbData,
   idTrackers,
   saveDb,
+  saveDbAsync,
   loadDb,
+  syncDbFromSupabase,
+  syncToSupabase,
   saveBase64File,
   getBonusForAmount,
   getBonusSlabLabelForAmount
