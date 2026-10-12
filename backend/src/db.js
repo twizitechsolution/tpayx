@@ -42,6 +42,8 @@ let dbData = {
   messages: [],
   withdrawals: [],
   disputes: [],
+  otps: {},
+  quotes: {},
   settings: {
     level1_commission: 10,
     level2_commission: 5,
@@ -67,6 +69,20 @@ let idTrackers = {
 async function syncToSupabase() {
   if (!supabase) return;
   try {
+    // 1. Sync full state to settings table with timeout
+    const fullStateStr = JSON.stringify({ dbData, idTrackers });
+    await Promise.race([
+      supabase.from('settings').upsert([
+        {
+          key: 'app_database_state',
+          value: fullStateStr,
+          description: 'Synchronized full database state'
+        }
+      ]),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase sync timeout')), 4000))
+    ]).catch(err => console.warn('[Supabase Sync State Warning]:', err.message));
+
+    // 2. Sync individual tables
     if (dbData.users && dbData.users.length > 0) {
       const userRows = dbData.users.map(u => ({
         id: Number(u.id),
@@ -114,37 +130,6 @@ async function syncToSupabase() {
       }));
       await supabase.from('orders').upsert(orderRows);
     }
-    if (dbData.products && dbData.products.length > 0) {
-      const prodRows = dbData.products.map(p => ({
-        id: Number(p.id),
-        title: p.name,
-        price: Number(p.amount),
-        daily_return: Number(p.income),
-        total_return: Number(p.quota),
-        period_days: 1,
-        category: p.type || 'TpayX Plan',
-        is_active: true,
-        created_at: p.created_at || new Date().toISOString()
-      }));
-      await supabase.from('products').upsert(prodRows);
-    }
-    if (dbData.price_ranges && dbData.price_ranges.length > 0) {
-      const prRows = dbData.price_ranges.map(p => ({
-        id: Number(p.id),
-        min_amount: Number(p.min_val),
-        max_amount: Number(p.max_val),
-        created_at: p.created_at || new Date().toISOString()
-      }));
-      await supabase.from('price_ranges').upsert(prRows);
-    }
-    if (dbData.settings) {
-      const settingsRows = Object.entries(dbData.settings).map(([k, v]) => ({
-        key: k,
-        value: typeof v === 'object' ? JSON.stringify(v) : String(v),
-        description: `Setting ${k}`
-      }));
-      await supabase.from('settings').upsert(settingsRows);
-    }
   } catch (err) {
     console.error('[Supabase Sync Error]:', err.message);
   }
@@ -153,7 +138,11 @@ async function syncToSupabase() {
 // Save helper
 function saveDb() {
   try {
-    fs.writeFileSync(dbPath, JSON.stringify({ dbData, idTrackers }, null, 2), 'utf8');
+    const payload = JSON.stringify({ dbData, idTrackers }, null, 2);
+    fs.writeFileSync(dbPath, payload, 'utf8');
+    if (defaultSeedPath && defaultSeedPath !== dbPath && fs.existsSync(defaultSeedPath)) {
+      try { fs.writeFileSync(defaultSeedPath, payload, 'utf8'); } catch (e) {}
+    }
   } catch (e) {
     console.error('Error saving local database JSON file:', e);
   }
@@ -376,6 +365,9 @@ function loadDb() {
   if (fs.existsSync(targetPath)) {
     try {
       const parsed = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
+      const activeOtps = dbData.otps || {};
+      const activeQuotes = dbData.quotes || {};
+
       if (parsed.dbData) {
         for (let key in dbData) delete dbData[key];
         Object.assign(dbData, parsed.dbData);
@@ -384,6 +376,9 @@ function loadDb() {
         for (let key in idTrackers) delete idTrackers[key];
         Object.assign(idTrackers, parsed.idTrackers);
       }
+
+      dbData.otps = { ...activeOtps, ...(dbData.otps || {}) };
+      dbData.quotes = { ...activeQuotes, ...(dbData.quotes || {}) };
 
       // Ensure dynamic tables are initialized
       dbData.commission_slabs = dbData.commission_slabs || [

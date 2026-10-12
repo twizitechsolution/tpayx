@@ -218,3 +218,181 @@ exports.toggleUserBlock = async (req, res) => {
   }
 };
 
+exports.getReports = async (req, res) => {
+  try {
+    const { range = 'daily', date, preset = 'today' } = req.query;
+    const { loadDb, dbData } = require('../db');
+    loadDb();
+
+    // Determine target statement date
+    let targetDateStr = date;
+    if (!targetDateStr) {
+      targetDateStr = new Date().toISOString().split('T')[0];
+    }
+
+    let startDateStr = targetDateStr;
+    let endDateStr = targetDateStr;
+
+    if (preset === 'yesterday') {
+      const d = new Date(targetDateStr);
+      d.setDate(d.getDate() - 1);
+      startDateStr = d.toISOString().split('T')[0];
+      endDateStr = startDateStr;
+    } else if (preset === 'past7') {
+      const d = new Date(targetDateStr);
+      d.setDate(d.getDate() - 6);
+      startDateStr = d.toISOString().split('T')[0];
+      endDateStr = targetDateStr;
+    } else if (preset === 'thisMonth') {
+      const d = new Date(targetDateStr);
+      startDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+      endDateStr = targetDateStr;
+    } else if (preset === 'lastMonth') {
+      const d = new Date(targetDateStr);
+      d.setMonth(d.getMonth() - 1);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const lastDay = new Date(year, d.getMonth() + 1, 0).getDate();
+      startDateStr = `${year}-${month}-01`;
+      endDateStr = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+    } else if (range === 'weekly') {
+      const d = new Date(targetDateStr);
+      d.setDate(d.getDate() - 6);
+      startDateStr = d.toISOString().split('T')[0];
+      endDateStr = targetDateStr;
+    } else if (range === 'monthly') {
+      const d = new Date(targetDateStr);
+      startDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+      endDateStr = targetDateStr;
+    }
+
+    const isInRange = (isoString) => {
+      if (!isoString) return false;
+      const dStr = isoString.split('T')[0];
+      return dStr >= startDateStr && dStr <= endDateStr;
+    };
+
+    const allOrders = dbData.orders || [];
+    const allUsers = dbData.users || [];
+    const allTxns = dbData.transactions || [];
+
+    // Filter orders in period
+    const periodOrders = allOrders.filter(o => isInRange(o.created_at));
+    const completedOrders = periodOrders.filter(o => o.status === 'Completed');
+    const totalDeposits = completedOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0);
+    const completedOrdersCount = completedOrders.length;
+
+    // Filter withdrawals/payouts in period
+    const periodWithdrawalTxns = allTxns.filter(t => t.type === 'Withdraw' && isInRange(t.created_at));
+    const totalWithdrawals = periodWithdrawalTxns.reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
+    const payoutsCount = periodWithdrawalTxns.length;
+
+    // Net platform flow
+    const netFlow = totalDeposits - totalWithdrawals;
+
+    // Recurring deposits analysis
+    let recurringDepositsSum = 0;
+    const repeatUserIds = new Set();
+    completedOrders.forEach(o => {
+      const priorOrders = allOrders.filter(prev => 
+        prev.user_id == o.user_id && 
+        prev.status === 'Completed' && 
+        new Date(prev.created_at).getTime() < new Date(o.created_at).getTime()
+      );
+      if (priorOrders.length > 0) {
+        recurringDepositsSum += Number(o.amount || 0);
+        repeatUserIds.add(o.user_id);
+      }
+    });
+
+    const recurringPercent = totalDeposits > 0 
+      ? Math.round((recurringDepositsSum / totalDeposits) * 100) 
+      : 0;
+
+    // New user registrations in period
+    const periodUsers = allUsers.filter(u => isInRange(u.created_at));
+    const newRegistrationsCount = periodUsers.length;
+
+    // Build Activity Logs
+    const userMap = new Map();
+    allUsers.forEach(u => userMap.set(u.id, u));
+
+    const depositsLog = periodOrders.map(o => {
+      const u = userMap.get(o.user_id) || {};
+      const priorOrders = allOrders.filter(prev => 
+        prev.user_id == o.user_id && 
+        prev.status === 'Completed' && 
+        new Date(prev.created_at).getTime() < new Date(o.created_at).getTime()
+      );
+      const isFTD = priorOrders.length === 0;
+
+      return {
+        id: o.id,
+        order_id: o.order_id,
+        user_id: o.user_id,
+        user_uid: u.uid || `UID_${o.user_id}`,
+        user_mobile: u.mobile || 'N/A',
+        amount: Number(o.amount || 0),
+        status: o.status,
+        utr: o.utr || 'N/A',
+        is_ftd: isFTD,
+        type: isFTD ? 'First-Time (FTD)' : 'Recurring / Repeat',
+        created_at: o.created_at
+      };
+    });
+
+    const withdrawalsLog = periodWithdrawalTxns.map(t => {
+      const u = userMap.get(t.user_id) || {};
+      return {
+        id: t.id,
+        user_id: t.user_id,
+        user_uid: u.uid || `UID_${t.user_id}`,
+        user_mobile: u.mobile || 'N/A',
+        amount: Math.abs(Number(t.amount || 0)),
+        status: 'Completed',
+        description: t.description || 'Debit withdrawal payout',
+        created_at: t.created_at
+      };
+    });
+
+    const newUsersLog = periodUsers.map(u => ({
+      id: u.id,
+      uid: u.uid,
+      mobile: u.mobile,
+      username: u.username || `TpayX_${u.uid}`,
+      invite_code: u.ref_code || '---',
+      parent_id: u.parent_id,
+      inr_balance: Number(u.inr_balance || 0),
+      bcoin_balance: Number(u.bcoin_balance || 0),
+      created_at: u.created_at
+    }));
+
+    return res.status(200).json({
+      success: true,
+      statementDate: targetDateStr,
+      range,
+      startDate: startDateStr,
+      endDate: endDateStr,
+      kpis: {
+        dailyDeposits: totalDeposits,
+        completedDepositsCount,
+        dailyWithdrawals: totalWithdrawals,
+        completedWithdrawalsCount: payoutsCount,
+        netPlatformFlow: netFlow,
+        recurringDeposits: recurringDepositsSum,
+        recurringPercent,
+        repeatUsersCount: repeatUserIds.size,
+        newRegistrations: newRegistrationsCount
+      },
+      activityLog: {
+        deposits: depositsLog,
+        withdrawals: withdrawalsLog,
+        newUsers: newUsersLog
+      }
+    });
+  } catch (error) {
+    console.error('Error generating reports:', error);
+    return res.status(500).json({ error: 'Internal server error while generating financial reports.' });
+  }
+};
+

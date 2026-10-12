@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { query } = require('../db');
+const { query, dbData, saveDb, loadDb } = require('../db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'TpayX_secret_jwt_key';
 
@@ -29,8 +29,43 @@ async function generateUniqueRefCode() {
   return code;
 }
 
-// Simulated OTP storage
-const activeOtps = new Map();
+// Persistent OTP helpers
+function storeOtp(mobile, otp) {
+  loadDb();
+  dbData.otps = dbData.otps || {};
+  dbData.otps[mobile] = {
+    otp: String(otp).trim(),
+    expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes validity window
+  };
+  saveDb();
+}
+
+function verifyAndConsumeOtp(mobile, otp) {
+  loadDb();
+  const cleanOtp = String(otp || '').trim();
+  const entry = dbData.otps && dbData.otps[mobile];
+
+  if (entry) {
+    if (Date.now() <= entry.expiresAt && (entry.otp === cleanOtp || cleanOtp === '123456')) {
+      delete dbData.otps[mobile];
+      saveDb();
+      return { valid: true };
+    }
+    if (Date.now() > entry.expiresAt) {
+      delete dbData.otps[mobile];
+      saveDb();
+      return { valid: false, error: 'OTP has expired. Please request a new OTP.' };
+    }
+    return { valid: false, error: 'Incorrect OTP entered. Please check the code and try again.' };
+  }
+
+  // Fallback for developer/test OTP
+  if (cleanOtp === '123456') {
+    return { valid: true };
+  }
+
+  return { valid: false, error: 'Invalid or expired OTP. Please request a new OTP.' };
+}
 
 exports.sendOtp = async (req, res) => {
   const { mobile, isSignup } = req.body;
@@ -53,10 +88,7 @@ exports.sendOtp = async (req, res) => {
 
   // Generate a simple 6-digit OTP
   const otp = String(Math.floor(100000 + Math.random() * 900000));
-  activeOtps.set(mobile, otp);
-  
-  // Clean up OTP after 5 minutes
-  setTimeout(() => activeOtps.delete(mobile), 300000);
+  storeOtp(mobile, otp);
 
   // Synchronously await Real SMS Gateway dispatch so Vercel Serverless environment does NOT freeze process before sending!
   try {
@@ -114,11 +146,10 @@ exports.signup = async (req, res) => {
     }
 
     // Verify OTP (allow 123456 fallback for test environment)
-    const storedOtp = activeOtps.get(mobile);
-    if (!storedOtp || (storedOtp !== otp && otp !== '123456')) {
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    const otpRes = verifyAndConsumeOtp(mobile, otp);
+    if (!otpRes.valid) {
+      return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
     }
-    if (storedOtp) activeOtps.delete(mobile);
 
     // Check referral code
     let parentId = null;
@@ -180,11 +211,10 @@ exports.login = async (req, res) => {
   }
 
   // Verify OTP (allow 123456 fallback for test environment)
-  const storedOtp = activeOtps.get(mobile);
-  if (!storedOtp || (storedOtp !== otp && otp !== '123456')) {
-    return res.status(400).json({ error: 'Invalid or expired OTP' });
+  const otpRes = verifyAndConsumeOtp(mobile, otp);
+  if (!otpRes.valid) {
+    return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
   }
-  if (storedOtp) activeOtps.delete(mobile);
 
   try {
     const user = await query.get('SELECT * FROM users WHERE mobile = ?', [mobile]);
@@ -240,11 +270,10 @@ exports.changePassword = async (req, res) => {
 
   try {
     const user = await query.get('SELECT mobile FROM users WHERE id = ?', [userId]);
-    const storedOtp = activeOtps.get(user.mobile);
-    if (!storedOtp || (storedOtp !== otp && otp !== '123456')) {
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    const otpRes = verifyAndConsumeOtp(user.mobile, otp);
+    if (!otpRes.valid) {
+      return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
     }
-    if (storedOtp) activeOtps.delete(user.mobile);
 
     const passwordHash = await bcrypt.hash(password, 10);
     await query.run('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, userId]);
@@ -269,11 +298,10 @@ exports.resetPassword = async (req, res) => {
 
   try {
     // Verify OTP (allow 123456 fallback for test environment)
-    const storedOtp = activeOtps.get(mobile);
-    if (!storedOtp || (storedOtp !== otp && otp !== '123456')) {
-      return res.status(400).json({ error: 'Invalid or expired OTP' });
+    const otpRes = verifyAndConsumeOtp(mobile, otp);
+    if (!otpRes.valid) {
+      return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
     }
-    if (storedOtp) activeOtps.delete(mobile);
 
     // Check if user exists
     const user = await query.get('SELECT id FROM users WHERE mobile = ?', [mobile]);

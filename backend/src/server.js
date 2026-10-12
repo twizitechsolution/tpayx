@@ -383,6 +383,7 @@ app.post('/api/admin/auth/login', adminController.adminLogin);
 // Protected Admin Management Endpoints
 app.post('/api/admin/change-password', adminAuth, adminController.changeAdminPassword);
 app.get('/api/admin/stats', adminAuth, adminController.getDashboardStats);
+app.get('/api/admin/reports', adminAuth, adminController.getReports);
 app.get('/api/admin/users', adminAuth, adminController.getUsersList);
 app.post('/api/admin/users/:id/toggle-block', adminAuth, adminController.toggleUserBlock);
 app.get('/api/admin/orders', adminAuth, async (req, res) => {

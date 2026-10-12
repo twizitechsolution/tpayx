@@ -308,8 +308,10 @@ exports.getPaymentQuote = async (req, res) => {
       timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     }
 
-    // Cache virtual quote details in memory so submit-p2p uses exact plan amount
-    activeQuotes.set(tempOrderId, {
+    // Cache virtual quote details in dbData.quotes and memory so submit-p2p uses exact plan amount
+    loadDb();
+    dbData.quotes = dbData.quotes || {};
+    dbData.quotes[tempOrderId] = {
       amount: amtNum,
       assetType,
       expectedIncome,
@@ -318,7 +320,9 @@ exports.getPaymentQuote = async (req, res) => {
       withdrawalId,
       timerExpiry,
       receiverDetails
-    });
+    };
+    saveDb();
+    activeQuotes.set(tempOrderId, dbData.quotes[tempOrderId]);
 
     return res.json({
       success: true,
@@ -368,17 +372,21 @@ exports.createOrder = async (req, res) => {
     return exports.getPaymentQuote(req, res);
   }
 
-  // Look up quote from cache if amount/assetType/receiver was not sent in submit-p2p body
+  loadDb();
+
+  // Look up quote from dbData.quotes or in-memory cache if amount was not sent in submit-p2p body
   let cachedQuote = null;
-  if (orderId && activeQuotes.has(orderId)) {
-    cachedQuote = activeQuotes.get(orderId);
+  if (orderId) {
+    if (dbData.quotes && dbData.quotes[orderId]) {
+      cachedQuote = dbData.quotes[orderId];
+    } else if (activeQuotes.has(orderId)) {
+      cachedQuote = activeQuotes.get(orderId);
+    }
   }
 
   if (!amount || Number(amount) <= 0) {
     if (cachedQuote && cachedQuote.amount > 0) {
       amount = cachedQuote.amount;
-    } else {
-      amount = 1000;
     }
   }
 
@@ -400,7 +408,7 @@ exports.createOrder = async (req, res) => {
 
   const amtNum = Number(amount);
   if (isNaN(amtNum) || amtNum <= 0) {
-    return res.status(400).json({ error: 'Amount must be a positive number' });
+    return res.status(400).json({ error: 'Order amount could not be verified. Please reselect your plan.' });
   }
 
   loadDb();
@@ -417,12 +425,12 @@ exports.createOrder = async (req, res) => {
     let orderId = req.params && req.params.orderId && req.params.orderId.length > 5 ? req.params.orderId : '';
 
     if (assetType === 'INR') {
-      expectedIncome = getBonusForAmount(amtNum);
+      expectedIncome = (cachedQuote && cachedQuote.expectedIncome) ? cachedQuote.expectedIncome : getBonusForAmount(amtNum);
       quota = amtNum + expectedIncome;
       if (!orderId) orderId = generateOrderId('gn');
     } else if (assetType === 'USDT') {
       const inrValue = amtNum * 110.0;
-      expectedIncome = inrValue * 0.10;
+      expectedIncome = (cachedQuote && cachedQuote.expectedIncome) ? cachedQuote.expectedIncome : (inrValue * 0.10);
       quota = inrValue + expectedIncome;
       if (!orderId) orderId = generateOrderId('gu');
     } else {
@@ -477,8 +485,12 @@ exports.createOrder = async (req, res) => {
           w.amount_pending = Math.max(0, w.amount_pending - amtNum);
         }
       }
-      saveDb();
     }
+
+    // Clean up consumed quote from persistent store and memory
+    if (dbData.quotes && dbData.quotes[orderId]) delete dbData.quotes[orderId];
+    if (activeQuotes.has(orderId)) activeQuotes.delete(orderId);
+    saveDb();
 
     const createdOrder = await query.get('SELECT * FROM orders WHERE order_id = ?', [orderId]);
     return res.status(201).json({

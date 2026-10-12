@@ -6,6 +6,7 @@ import ProductManager from './components/ProductManager';
 import MessageManager from './components/MessageManager';
 import SettingsManager from './components/SettingsManager';
 import DisputeManager from './components/DisputeManager';
+import ReportsManager from './components/ReportsManager';
 
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const API_BASE = rawApiUrl.endsWith('/api') ? `${rawApiUrl}/admin` : `${rawApiUrl}/api/admin`;
@@ -178,6 +179,7 @@ const ProtectedLayout = ({ children, token, handleLogout, theme, setTheme }) => 
               { id: 'dashboard', label: 'Dashboard', icon: 'fas fa-chart-line' },
               { id: 'orders', label: 'Deposit Orders', icon: 'fas fa-shopping-bag' },
               { id: 'users', label: 'Users Directory', icon: 'fas fa-users' },
+              { id: 'reports', label: 'Reports', icon: 'fas fa-chart-pie' },
               { id: 'sliders', label: 'Home Banners', icon: 'fas fa-image' },
               { id: 'products', label: 'Manage Products', icon: 'fas fa-boxes' },
               { id: 'messages', label: 'Broadcast Messages', icon: 'fas fa-envelope' },
@@ -1985,7 +1987,11 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
         </div>
       )}
 
-      {/* Sliders, Products, and Messages manager renders */}
+      {/* Reports, Sliders, Products, and Messages manager renders */}
+      {!loading && activeTab === 'reports' && (
+        <ReportsManager token={token} theme={theme} />
+      )}
+
       {!loading && activeTab === 'sliders' && (
         <SliderManager token={token} theme={theme} />
       )}
