@@ -206,8 +206,23 @@ exports.getPaymentQuote = async (req, res) => {
       loadDb();
 
       // Find all unique eligible users with available T-Coin balance (bcoin_balance) >= amtNum & >= 200 and active bank
+      // STRICT SINGLE-PENDING-ORDER ENFORCEMENT:
+      // A user who has ANY active unfinalized sales order (or active unexpired quote) CANNOT receive another sales order.
       const eligibleUsers = dbData.users.filter(u => {
         if (u.id == userId || u.id == 1 || u.is_blocked) return false;
+
+        // 1. Check if user already has an active, unfinalized sales order
+        const hasActiveSalesOrder = (dbData.orders || []).some(o => 
+          o.receiver_id == u.id && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
+        );
+        if (hasActiveSalesOrder) return false;
+
+        // 2. Check if user is currently reserved in an active, unexpired quote
+        const now = new Date();
+        const hasActiveQuote = Object.values(dbData.quotes || {}).some(q => 
+          q && q.receiverId == u.id && q.timerExpiry && now < new Date(q.timerExpiry)
+        );
+        if (hasActiveQuote) return false;
         
         const bcoinBalance = Number(u.bcoin_balance || 0);
         if (bcoinBalance < 200) return false;
@@ -216,15 +231,15 @@ exports.getPaymentQuote = async (req, res) => {
           .filter(w => w.user_id == u.id && w.status === 'Pending')
           .reduce((sum, w) => sum + w.amount_pending, 0);
 
-        const activeMatchTotal = dbData.orders
-          .filter(o => o.receiver_id == u.id && ['Pending', 'Confirming', 'Disputed'].includes(o.status))
+        const activeMatchTotal = (dbData.orders || [])
+          .filter(o => o.receiver_id == u.id && ['Pending', 'Confirming', 'Disputed', 'Admin Review'].includes(o.status))
           .reduce((sum, o) => {
             if (o.withdrawal_id) return sum;
             return sum + o.amount;
           }, 0);
           
         const availableBcoin = bcoinBalance - (pendingWithdrawalTotal + activeMatchTotal);
-        const hasActiveBank = dbData.bank_accounts.some(b => b.user_id == u.id && b.status === 'Active');
+        const hasActiveBank = (dbData.bank_accounts || []).some(b => b.user_id == u.id && b.status === 'Active');
         
         return availableBcoin >= amtNum && availableBcoin >= 200 && hasActiveBank;
       });
@@ -438,7 +453,19 @@ exports.createOrder = async (req, res) => {
     }
 
     const timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-    const finalReceiverId = receiver_id || 1;
+    let finalReceiverId = receiver_id || 1;
+
+    // Re-verify that the assigned receiver does not already have an active unfinalized sales order
+    if (finalReceiverId != 1) {
+      const hasActiveSalesOrder = (dbData.orders || []).some(o =>
+        o.order_id !== orderId && o.receiver_id == finalReceiverId && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
+      );
+      if (hasActiveSalesOrder) {
+        console.log(`[OrderAssignment] Receiver ${finalReceiverId} already has an active sales order. Re-routing order ${orderId} to Admin.`);
+        finalReceiverId = 1;
+        withdrawal_id = null;
+      }
+    }
 
     // Build receiver details
     const bank = dbData.bank_accounts.find(b => b.user_id == finalReceiverId && b.status === 'Active') || {
@@ -559,6 +586,51 @@ const executeOrderApproval = async (order, txnId) => {
 
   // 1. Update order status to Completed
   await query.run('UPDATE orders SET status = "Completed", utr = ? WHERE order_id = ?', [txnId || order.utr || 'WINPEY_AUTO', order.order_id]);
+
+  loadDb();
+  const dbOrder = (dbData.orders || []).find(o => o.order_id === order.order_id);
+  if (dbOrder) {
+    dbOrder.status = 'Completed';
+    dbOrder.utr = txnId || order.utr || dbOrder.utr;
+  }
+
+  // 1b. If matched to a P2P seller (receiver_id != 1), debit receiver's wallet and complete matched withdrawal
+  const receiverId = order.receiver_id || (dbOrder ? dbOrder.receiver_id : null);
+  if (receiverId && receiverId != 1) {
+    const receiver = (dbData.users || []).find(u => u.id == receiverId);
+    if (receiver) {
+      receiver.bcoin_balance = Math.max(0, Number(receiver.bcoin_balance || 0) - Number(order.amount || 0));
+      await query.run('UPDATE users SET bcoin_balance = ? WHERE id = ?', [receiver.bcoin_balance, receiver.id]);
+
+      // Complete matched withdrawal request if linked
+      const matchedWithId = order.withdrawal_id || (dbOrder ? dbOrder.withdrawal_id : null);
+      if (matchedWithId) {
+        const w = (dbData.withdrawals || []).find(x => x.id == matchedWithId);
+        if (w && w.amount_pending <= 0) {
+          w.status = 'Completed';
+        }
+      }
+
+      // Add transaction log for receiver if not already logged
+      const existingTx = (dbData.transactions || []).find(t => t.user_id == receiver.id && t.type === 'Withdraw' && (t.order_id === order.order_id || (t.description && t.description.includes(order.order_id))));
+      if (!existingTx) {
+        const newTxId = ++idTrackers.transactions;
+        const bank = (dbData.bank_accounts || []).find(b => b.user_id == receiver.id && b.status === 'Active') || { bank_name: 'Bank', account_number: 'N/A', account_holder: receiver.username };
+        const desc = `Bank: ${bank.bank_name}, A/C: ${bank.account_number}, Holder: ${bank.account_holder}, UTR: ${order.utr || 'N/A'}, TXID: MWD_${Date.now()}, Note: P2P match withdrawal completed for Order ${order.order_id}`;
+        dbData.transactions.push({
+          id: newTxId,
+          user_id: receiver.id,
+          type: 'Withdraw',
+          amount: -Number(order.amount),
+          balance_after: receiver.bcoin_balance,
+          status: 'Completed',
+          order_id: order.order_id,
+          description: desc,
+          created_at: new Date().toISOString()
+        });
+      }
+    }
+  }
 
   // 2. Fetch the user who placed this order
   const buyer = await query.get('SELECT * FROM users WHERE id = ?', [order.user_id]);
@@ -707,15 +779,31 @@ exports.adminCancelOrder = async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    if (order.status !== 'Confirming') {
-      return res.status(400).json({ error: `Cannot cancel an order with status: ${order.status}` });
+    if (order.status === 'Completed') {
+      return res.status(400).json({ error: 'Cannot cancel an order that is already completed' });
+    }
+    if (order.status === 'Canceled') {
+      return res.status(400).json({ error: 'Order has already been canceled' });
     }
 
     await query.run('UPDATE orders SET status = "Canceled" WHERE order_id = ?', [orderId]);
 
+    loadDb();
+    const dbOrder = (dbData.orders || []).find(o => o.order_id === orderId);
+    if (dbOrder) {
+      dbOrder.status = 'Canceled';
+      if (dbOrder.withdrawal_id) {
+        const w = (dbData.withdrawals || []).find(x => x.id == dbOrder.withdrawal_id);
+        if (w) {
+          w.amount_pending = Math.max(0, Number(w.amount_pending || 0) + Number(dbOrder.amount || 0));
+        }
+      }
+    }
+    await saveDbAsync();
+
     return res.json({
       success: true,
-      message: 'Order canceled successfully!',
+      message: 'Order canceled/rejected successfully!',
       orderStatus: 'Canceled'
     });
 

@@ -246,12 +246,22 @@ app.get('/api/products', async (req, res) => {
       const seller = dbData.users.find(u => u.id == w.user_id);
       if (!seller || seller.bcoin_balance < minPlanAmount || seller.is_blocked) return;
 
+      // Exclude seller if they already have an active unfinalized sales order or active quote
+      const hasActiveOrder = (dbData.orders || []).some(o =>
+        o.receiver_id == seller.id && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
+      );
+      if (hasActiveOrder) return;
+      const hasActiveQuote = Object.values(dbData.quotes || {}).some(q =>
+        q && q.receiverId == seller.id && q.timerExpiry && new Date() < new Date(q.timerExpiry)
+      );
+      if (hasActiveQuote) return;
+
       const bank = dbData.bank_accounts.find(b => b.user_id == seller.id && b.status === 'Active');
       if (!bank) return;
 
       // Verify that this user has enough available T-Coins to cover the withdrawal request
       const activeMatchTotal = dbData.orders
-        .filter(o => o.receiver_id == seller.id && ['Pending', 'Confirming', 'Disputed'].includes(o.status))
+        .filter(o => o.receiver_id == seller.id && ['Pending', 'Confirming', 'Disputed', 'Admin Review'].includes(o.status))
         .reduce((sum, o) => {
           if (o.withdrawal_id) return sum; // Avoid double-counting direct matches
           return sum + o.amount;
@@ -284,12 +294,22 @@ app.get('/api/products', async (req, res) => {
       const hasBank = (dbData.bank_accounts || []).some(b => b.user_id == u.id && b.status === 'Active');
       if (!hasBank) return false;
 
+      // Exclude seller if they already have an active unfinalized sales order or active quote
+      const hasActiveOrder = (dbData.orders || []).some(o =>
+        o.receiver_id == u.id && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
+      );
+      if (hasActiveOrder) return false;
+      const hasActiveQuote = Object.values(dbData.quotes || {}).some(q =>
+        q && q.receiverId == u.id && q.timerExpiry && new Date() < new Date(q.timerExpiry)
+      );
+      if (hasActiveQuote) return false;
+
       // Ensure user is not already listed in pending withdrawals above
       const hasPendingWithdrawal = pendingWithdrawals.some(w => w.user_id == u.id);
       if (hasPendingWithdrawal) return false;
 
       const activeMatchTotal = dbData.orders
-        .filter(o => o.receiver_id == u.id && ['Pending', 'Confirming', 'Disputed'].includes(o.status))
+        .filter(o => o.receiver_id == u.id && ['Pending', 'Confirming', 'Disputed', 'Admin Review'].includes(o.status))
         .reduce((sum, o) => sum + o.amount, 0);
       const availableBalance = u.bcoin_balance - activeMatchTotal;
       return availableBalance >= minPlanAmount;
@@ -1002,7 +1022,7 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
     const userId = req.user.id;
     const now = Date.now();
     const requests = (dbData.orders || [])
-      .filter(o => o.receiver_id == userId && (o.status === 'Confirming' || o.status === 'Admin Review' || o.status === 'Disputed'))
+      .filter(o => o.receiver_id == userId && (o.status === 'Confirming' || o.status === 'Admin Review' || o.status === 'Disputed' || o.status === 'Pending'))
       .map(o => {
         const buyer = (dbData.users || []).find(u => u.id == o.user_id) || {};
         return {
@@ -1066,7 +1086,7 @@ app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => 
       return res.status(404).json({ error: 'Matched order not found' });
     }
 
-    if (order.status !== 'Confirming' && order.status !== 'Admin Review') {
+    if (!['Confirming', 'Admin Review', 'Pending'].includes(order.status)) {
       return res.status(400).json({ error: 'Order is not in pending confirming status' });
     }
 
@@ -1091,7 +1111,7 @@ app.post('/api/orders/:orderId/p2p-receive', authMiddleware, async (req, res) =>
       return res.status(404).json({ error: 'Matched order not found' });
     }
 
-    if (order.status !== 'Confirming' && order.status !== 'Admin Review') {
+    if (!['Confirming', 'Admin Review', 'Pending'].includes(order.status)) {
       return res.status(400).json({ error: 'Order is not in pending confirming status' });
     }
 
@@ -1517,35 +1537,17 @@ setInterval(() => {
     let autoApprovedCount = 0;
     const now = new Date();
 
+    let updatedCount = 0;
     dbData.orders.forEach(order => {
       if (order.timer_expiry && now > new Date(order.timer_expiry)) {
-        if (order.status === 'Pending') {
-          // Cancel pending orders (no payment submitted)
-          order.status = 'Canceled';
-          expiredCount++;
-
-          // Refund/restore matched withdrawal request
-          if (order.withdrawal_id) {
-            const w = dbData.withdrawals.find(x => x.id == order.withdrawal_id);
-            if (w) {
-              w.amount_pending += order.amount;
-            }
-          }
-        } else if (order.status === 'Confirming') {
-          // 15-minute countdown expired: mark timer expired, but allow 2-hour window before escalating to Admin Review
+        if (!order.is_timer_expired) {
           order.is_timer_expired = true;
-          const orderTime = new Date(order.created_at || order.timer_expiry).getTime();
-          const twoHoursMs = 2 * 60 * 60 * 1000;
-          if (now.getTime() - orderTime >= twoHoursMs) {
-            order.status = 'Admin Review';
-            console.log(`[TimerExpiry] Order ${order.order_id} 2-hour window expired. Status escalated to Admin Review.`);
-          }
+          updatedCount++;
         }
       }
     });
 
-    if (expiredCount > 0 || autoApprovedCount > 0) {
-      console.log(`[Auto-Expiry] Cancelled ${expiredCount} expired P2P orders, auto-approved ${autoApprovedCount} confirming orders.`);
+    if (updatedCount > 0) {
       saveDb();
     }
   } catch (err) {

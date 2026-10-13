@@ -10,10 +10,10 @@
         "ref_code": "admin_ref",
         "parent_id": 0,
         "inr_balance": 0,
-        "bcoin_balance": 0,
+        "bcoin_balance": 50,
         "usdt_balance": 99999999,
-        "total_earnings": 0,
-        "today_profit": 0,
+        "total_earnings": 50,
+        "today_profit": 50,
         "yesterday_profit": 0,
         "created_at": "2026-07-31T17:24:12.142Z",
         "username": "Tushar Sharma",
@@ -28,7 +28,7 @@
         "ref_code": "tpchild123",
         "parent_id": 1,
         "inr_balance": 0,
-        "bcoin_balance": 0,
+        "bcoin_balance": 4500,
         "usdt_balance": 0,
         "total_earnings": 0,
         "today_profit": 0,
@@ -46,10 +46,10 @@
         "ref_code": "tp779009",
         "parent_id": 1,
         "inr_balance": 0,
-        "bcoin_balance": 0,
+        "bcoin_balance": 512.5,
         "usdt_balance": 0,
-        "total_earnings": 0,
-        "today_profit": 0,
+        "total_earnings": 12.5,
+        "today_profit": 12.5,
         "yesterday_profit": 0,
         "created_at": "2026-08-07T15:16:22.583Z",
         "username": "TpayX_7790098808",
@@ -333,6 +333,29 @@
           "mobile": "8763527330"
         },
         "screenshot_path": "/uploads/screenshot_1791835767823_919.png"
+      },
+      {
+        "id": 10003,
+        "created_at": "2026-10-13T13:49:14.297Z",
+        "order_id": "gn1791899354281",
+        "user_id": 3,
+        "asset_type": "INR",
+        "amount": 500,
+        "expected_income": 12.5,
+        "quota": 512.5,
+        "status": "Confirming",
+        "utr": "UTR_FORCED_1791899354281",
+        "receiver_id": 1,
+        "timer_expiry": "2026-10-13T14:04:14.288Z",
+        "receiver_details": {
+          "receiver_name": "Tushar Sharma",
+          "bank_name": "HDFC Bank",
+          "account_number": "50100481729381",
+          "ifsc_code": "HDFC0000123",
+          "upi_id": "demo@ybl",
+          "mobile": "8763527330"
+        },
+        "screenshot_path": "/uploads/screenshot_1791899354290_213.png"
       }
     ],
     "bank_accounts": [
@@ -368,6 +391,16 @@
         "upi_id": "testalpha@ybl",
         "status": "Active",
         "created_at": "2026-09-06T19:05:55.482Z"
+      },
+      {
+        "id": 999,
+        "user_id": 2,
+        "bank_name": "Test Bank",
+        "account_holder": "Test Seller",
+        "account_number": "1234567890",
+        "ifsc_code": "TEST0001",
+        "upi_id": "testseller@upi",
+        "status": "Active"
       }
     ],
     "transactions": [
@@ -388,6 +421,42 @@
         "balance_after": 99999999,
         "description": "Level 1 Commission of ₹250.00 from member UID: M999001 (Order ID: gn20260907TEST003)",
         "created_at": "2026-09-06T18:05:55.480Z"
+      },
+      {
+        "id": 16,
+        "user_id": 1,
+        "type": "Commission",
+        "amount": 50,
+        "balance_after": 0,
+        "description": "Level 1 Commission of ₹50.00 from member UID: M779009 (Order ID: gn20261013191914DA79CA)",
+        "created_at": "2026-10-13T13:49:14.391Z"
+      },
+      {
+        "id": 17,
+        "created_at": "2026-10-13T13:49:14.446Z",
+        "user_id": 3,
+        "type": "Deposit",
+        "amount": 500,
+        "balance_after": 500,
+        "description": "Deposit principal for Order gn20261013191914DA79CA"
+      },
+      {
+        "id": 18,
+        "created_at": "2026-10-13T13:49:14.454Z",
+        "user_id": 3,
+        "type": "Commission",
+        "amount": 12.5,
+        "balance_after": 512.5,
+        "description": "Interest bonus for Order gn20261013191914DA79CA"
+      },
+      {
+        "id": 19,
+        "created_at": "2026-10-13T13:49:14.472Z",
+        "user_id": 1,
+        "type": "Commission",
+        "amount": 50,
+        "balance_after": 50,
+        "description": "Level 1 Commission of ₹50.00 from member UID: M779009 (Order ID: gn20261013191914DA79CA)"
       }
     ],
     "user_tasks": [
@@ -1083,31 +1152,14 @@
     ],
     "otps": {},
     "quotes": {
-      "gn202610121006593CCCCD": {
-        "amount": 724,
+      "gn20261013191914E88E0A": {
+        "amount": 500,
         "assetType": "INR",
-        "expectedIncome": 18.1,
-        "quota": 742.1,
-        "receiverId": 3,
-        "withdrawalId": null,
-        "timerExpiry": "2026-10-12T10:21:59.134Z",
-        "receiverDetails": {
-          "receiver_name": "Nirod",
-          "bank_name": "Punjab National Bank",
-          "account_number": "5478454784174",
-          "ifsc_code": "PNBD0005411",
-          "upi_id": "demo@ybl",
-          "mobile": "7790098808"
-        }
-      },
-      "gn20261013013833A33946": {
-        "amount": 499,
-        "assetType": "INR",
-        "expectedIncome": 12.48,
-        "quota": 511.48,
+        "expectedIncome": 12.5,
+        "quota": 512.5,
         "receiverId": 1,
         "withdrawalId": null,
-        "timerExpiry": "2026-10-12T20:23:33.179Z",
+        "timerExpiry": "2026-10-13T14:04:14.274Z",
         "receiverDetails": {
           "receiver_name": "Tushar Sharma",
           "bank_name": "HDFC Bank",
@@ -1117,14 +1169,14 @@
           "mobile": "8763527330"
         }
       },
-      "gn20261013013853C0E677": {
-        "amount": 499,
+      "gn20261013191914936010": {
+        "amount": 500,
         "assetType": "INR",
-        "expectedIncome": 12.48,
-        "quota": 511.48,
+        "expectedIncome": 12.5,
+        "quota": 512.5,
         "receiverId": 1,
         "withdrawalId": null,
-        "timerExpiry": "2026-10-12T20:23:53.614Z",
+        "timerExpiry": "2026-10-13T14:04:14.329Z",
         "receiverDetails": {
           "receiver_name": "Tushar Sharma",
           "bank_name": "HDFC Bank",
@@ -1138,9 +1190,9 @@
   },
   "idTrackers": {
     "users": 1005,
-    "orders": 10001,
+    "orders": 10004,
     "bank_accounts": 6601,
-    "transactions": 15,
+    "transactions": 19,
     "user_tasks": 6,
     "messages": 2,
     "products": 8832,
