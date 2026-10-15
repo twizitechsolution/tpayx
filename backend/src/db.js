@@ -1,3 +1,5 @@
+const dns = require('dns');
+if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
 require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
@@ -69,6 +71,7 @@ let idTrackers = {
 let localStateVersion = 0;
 let lastSyncCheckTime = 0;
 let isSyncing = false;
+let currentSyncPromise = null;
 
 async function syncDbFromSupabase(force = false) {
   if (!supabase) return;
@@ -80,39 +83,51 @@ async function syncDbFromSupabase(force = false) {
   if (isSyncing) return;
   isSyncing = true;
   try {
-    const versionPromise = supabase.from('settings').select('value').eq('key', 'app_db_version').single();
-    const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase version check timeout')), 2500));
-    const { data: verRow } = await Promise.race([versionPromise, timeoutPromise]).catch(() => ({ data: null }));
-    
-    const remoteVersion = verRow && verRow.value ? Number(verRow.value) : 0;
-    if (force || localStateVersion === 0 || remoteVersion > localStateVersion) {
-      console.log(`[Supabase Hydrate] Pulling remote state (local: ${localStateVersion}, remote: ${remoteVersion})...`);
-      const statePromise = supabase.from('settings').select('value').eq('key', 'app_database_state').single();
-      const stateTimeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase state fetch timeout')), 3500));
-      const { data: stateRow } = await Promise.race([statePromise, stateTimeout]).catch(() => ({ data: null }));
+    if (force || localStateVersion === 0) {
+      console.log(`[Supabase Hydrate] Pulling remote state (local: ${localStateVersion})...`);
+      const statePromise = supabase
+        .from('settings')
+        .select('key, value')
+        .in('key', ['app_database_state', 'app_db_version']);
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase state fetch timeout')), 5000));
+      const { data: rows } = await Promise.race([statePromise, timeoutPromise]).catch(() => ({ data: null }));
 
-      if (stateRow && stateRow.value) {
-        const parsed = JSON.parse(stateRow.value);
-        if (parsed && parsed.dbData) {
-          const activeOtps = { ...(parsed.dbData.otps || {}), ...(dbData.otps || {}) };
-          const activeQuotes = { ...(parsed.dbData.quotes || {}), ...(dbData.quotes || {}) };
+      if (rows && Array.isArray(rows)) {
+        const stateRow = rows.find(r => r.key === 'app_database_state');
+        const verRow = rows.find(r => r.key === 'app_db_version');
+        const remoteVersion = verRow && verRow.value ? Number(verRow.value) : Date.now();
 
-          for (let key in dbData) delete dbData[key];
-          Object.assign(dbData, parsed.dbData);
-          dbData.otps = activeOtps;
-          dbData.quotes = activeQuotes;
+        if (stateRow && stateRow.value) {
+          const parsed = JSON.parse(stateRow.value);
+          if (parsed && parsed.dbData) {
+            const activeOtps = { ...(parsed.dbData.otps || {}), ...(dbData.otps || {}) };
+            const activeQuotes = { ...(parsed.dbData.quotes || {}), ...(dbData.quotes || {}) };
 
-          if (parsed.idTrackers) {
-            for (let key in idTrackers) delete idTrackers[key];
-            Object.assign(idTrackers, parsed.idTrackers);
+            for (let key in dbData) delete dbData[key];
+            Object.assign(dbData, parsed.dbData);
+            dbData.otps = activeOtps;
+            dbData.quotes = activeQuotes;
+
+            if (parsed.idTrackers) {
+              for (let key in idTrackers) delete idTrackers[key];
+              Object.assign(idTrackers, parsed.idTrackers);
+            }
+
+            localStateVersion = remoteVersion;
+            try {
+              fs.writeFileSync(dbPath, JSON.stringify({ dbData, idTrackers }, null, 2), 'utf8');
+            } catch (e) {}
+            console.log(`[Supabase Hydrate] State hydrated successfully. Users: ${dbData.users.length}, Orders: ${dbData.orders.length}`);
           }
-
-          localStateVersion = remoteVersion > 0 ? remoteVersion : Date.now();
-          try {
-            fs.writeFileSync(dbPath, JSON.stringify({ dbData, idTrackers }, null, 2), 'utf8');
-          } catch (e) {}
-          console.log(`[Supabase Hydrate] State hydrated successfully. Users: ${dbData.users.length}, Orders: ${dbData.orders.length}`);
         }
+      }
+    } else {
+      const versionPromise = supabase.from('settings').select('value').eq('key', 'app_db_version').single();
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase version check timeout')), 2500));
+      const { data: verRow } = await Promise.race([versionPromise, timeoutPromise]).catch(() => ({ data: null }));
+      const remoteVersion = verRow && verRow.value ? Number(verRow.value) : 0;
+      if (remoteVersion > localStateVersion) {
+        return syncDbFromSupabase(true);
       }
     }
   } catch (err) {
@@ -130,7 +145,8 @@ async function syncToSupabase() {
     lastSyncCheckTime = newVersion;
     const fullStateStr = JSON.stringify({ dbData, idTrackers });
 
-    await Promise.race([
+    // 1. Commit primary state to settings table (critical single source of truth)
+    const { error: stateError } = await Promise.race([
       supabase.from('settings').upsert([
         {
           key: 'app_database_state',
@@ -148,10 +164,17 @@ async function syncToSupabase() {
           description: 'Deposit commission percent'
         }
       ]),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase sync timeout')), 8000))
-    ]).catch(err => console.warn('[Supabase Sync State Warning]:', err.message));
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase sync timeout')), 6000))
+    ]).catch(err => {
+      console.warn('[Supabase Sync State Warning]:', err.message);
+      return { error: err };
+    });
 
-    // Sync individual tables
+    if (stateError) {
+      console.error('[Supabase State Upsert Error]:', stateError.message);
+    }
+
+    // 2. Secondary sync of individual tables in parallel
     const tablePromises = [];
     if (dbData.users && dbData.users.length > 0) {
       const userRows = dbData.users.map(u => ({
@@ -200,16 +223,19 @@ async function syncToSupabase() {
       }));
       tablePromises.push(supabase.from('orders').upsert(orderRows));
     }
-    await Promise.race([
-      Promise.all(tablePromises),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase tables sync timeout')), 8000))
-    ]).catch(err => console.warn('[Supabase Tables Sync Warning]:', err.message));
+
+    if (tablePromises.length > 0) {
+      await Promise.race([
+        Promise.all(tablePromises),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase tables sync timeout')), 6000))
+      ]).catch(err => console.warn('[Supabase Tables Sync Warning]:', err.message));
+    }
   } catch (err) {
     console.error('[Supabase Sync Error]:', err.message);
   }
 }
 
-// Save helper
+// Save helpers
 function saveDb() {
   try {
     const payload = JSON.stringify({ dbData, idTrackers }, null, 2);
@@ -221,15 +247,21 @@ function saveDb() {
     console.error('Error saving local database JSON file:', e);
   }
   if (supabase) {
-    syncToSupabase().catch(err => console.error('[Supabase Async Sync Error]:', err.message));
+    currentSyncPromise = syncToSupabase().catch(err => console.error('[Supabase Async Sync Error]:', err.message));
+    return currentSyncPromise;
   }
+  return Promise.resolve();
 }
 
 async function saveDbAsync() {
   saveDb();
-  if (supabase) {
-    await syncToSupabase();
+  if (supabase && currentSyncPromise) {
+    await currentSyncPromise;
   }
+}
+
+function getPendingSync() {
+  return currentSyncPromise;
 }
 
 function repairMissingCommissions() {
@@ -1072,7 +1104,7 @@ const query = {
         }
 
         dbData[table].push(record);
-        saveDb();
+        await saveDbAsync();
         return { lastID: newId, changes: 1 };
       }
     }
@@ -1177,7 +1209,6 @@ const query = {
           upi_ids: params[7] !== undefined ? params[7] : (dbData.settings.upi_ids || "")
         };
         changes = 1;
-        saveDb();
       }
 
       // 8. UPDATE orders SET status = "Completed"...
@@ -1189,7 +1220,6 @@ const query = {
           ord.status = 'Completed';
           if (utrParam) ord.utr = utrParam;
           changes = 1;
-          saveDb();
         }
       }
 
@@ -1200,7 +1230,6 @@ const query = {
         if (ord) {
           ord.status = 'Canceled';
           changes = 1;
-          saveDb();
         }
       }
 
@@ -1252,67 +1281,49 @@ const query = {
       }
 
       if (changes > 0) {
-        saveDb();
+        await saveDbAsync();
         return { changes };
       }
     }
 
     // --- DELETE STATEMENTS ---
     if (cleanSql.startsWith('DELETE FROM')) {
+      let changes = 0;
       // 1. DELETE FROM bank_accounts WHERE id = ? AND user_id = ?
       if (cleanSql.includes('DELETE FROM bank_accounts WHERE id = ? AND user_id = ?')) {
         const prevLength = dbData.bank_accounts.length;
         dbData.bank_accounts = dbData.bank_accounts.filter(a => !(a.id === parseInt(params[0]) && a.user_id === params[1]));
-        const changes = prevLength - dbData.bank_accounts.length;
-        if (changes > 0) {
-          saveDb();
-        }
-        return { changes };
+        changes = prevLength - dbData.bank_accounts.length;
       }
-
       // 2. DELETE FROM sliders WHERE id = ?
-      if (cleanSql.includes('DELETE FROM sliders WHERE id = ?')) {
+      else if (cleanSql.includes('DELETE FROM sliders WHERE id = ?')) {
         const prevLength = dbData.sliders.length;
         dbData.sliders = dbData.sliders.filter(s => s.id !== parseInt(params[0]));
-        const changes = prevLength - dbData.sliders.length;
-        if (changes > 0) {
-          saveDb();
-        }
-        return { changes };
+        changes = prevLength - dbData.sliders.length;
       }
-
       // 3. DELETE FROM products WHERE id = ?
-      if (cleanSql.includes('DELETE FROM products WHERE id = ?')) {
+      else if (cleanSql.includes('DELETE FROM products WHERE id = ?')) {
         const prevLength = dbData.products.length;
         dbData.products = dbData.products.filter(p => p.id !== parseInt(params[0]));
-        const changes = prevLength - dbData.products.length;
-        if (changes > 0) {
-          saveDb();
-        }
-        return { changes };
+        changes = prevLength - dbData.products.length;
       }
-
       // 4. DELETE FROM price_ranges WHERE id = ?
-      if (cleanSql.includes('DELETE FROM price_ranges WHERE id = ?')) {
+      else if (cleanSql.includes('DELETE FROM price_ranges WHERE id = ?')) {
         const prevLength = dbData.price_ranges.length;
         dbData.price_ranges = dbData.price_ranges.filter(r => r.id !== parseInt(params[0]));
-        const changes = prevLength - dbData.price_ranges.length;
-        if (changes > 0) {
-          saveDb();
-        }
-        return { changes };
+        changes = prevLength - dbData.price_ranges.length;
       }
-
       // 5. DELETE FROM messages WHERE id = ?
-      if (cleanSql.includes('DELETE FROM messages WHERE id = ?')) {
+      else if (cleanSql.includes('DELETE FROM messages WHERE id = ?')) {
         const prevLength = dbData.messages.length;
         dbData.messages = dbData.messages.filter(m => m.id !== parseInt(params[0]));
-        const changes = prevLength - dbData.messages.length;
-        if (changes > 0) {
-          saveDb();
-        }
-        return { changes };
+        changes = prevLength - dbData.messages.length;
       }
+
+      if (changes > 0) {
+        await saveDbAsync();
+      }
+      return { changes };
     }
 
     console.warn('Simulated query.run executed no changes for:', cleanSql);
@@ -1571,6 +1582,7 @@ module.exports = {
   idTrackers,
   saveDb,
   saveDbAsync,
+  getPendingSync,
   loadDb,
   syncDbFromSupabase,
   syncToSupabase,

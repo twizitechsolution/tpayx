@@ -49,7 +49,7 @@ exports.changeAdminPassword = async (req, res) => {
       return res.status(400).json({ error: 'New password must be at least 5 characters long.' });
     }
 
-    const { loadDb, dbData, saveDb } = require('../db');
+    const { loadDb, dbData, saveDbAsync } = require('../db');
     loadDb();
     dbData.admin = dbData.admin || {
       username: process.env.ADMIN_USER || 'admin',
@@ -61,7 +61,7 @@ exports.changeAdminPassword = async (req, res) => {
     }
 
     dbData.admin.password = newPassword;
-    saveDb();
+    await saveDbAsync();
 
     return res.status(200).json({
       success: true,
@@ -193,7 +193,7 @@ exports.getUsersList = async (req, res) => {
 exports.toggleUserBlock = async (req, res) => {
   try {
     const { id } = req.params;
-    const { loadDb, dbData, saveDb } = require('../db');
+    const { loadDb, dbData, saveDbAsync } = require('../db');
     loadDb();
     const user = dbData.users.find(u => u.id == id);
     if (!user) {
@@ -202,7 +202,7 @@ exports.toggleUserBlock = async (req, res) => {
 
     const newBlockedState = !user.is_blocked;
     user.is_blocked = newBlockedState;
-    saveDb();
+    await saveDbAsync();
 
     // Update SQLite database to keep SQLite & dbData in sync
     await query.run('UPDATE users SET is_blocked = ? WHERE id = ?', [newBlockedState ? 1 : 0, id]);

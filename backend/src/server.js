@@ -1,9 +1,11 @@
+const dns = require('dns');
+if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
 const dotenv = require('dotenv');
 dotenv.config();
 
 const express = require('express');
 const cors = require('cors');
-const { initDb, query, dbData, idTrackers, saveDb, saveDbAsync, loadDb, syncDbFromSupabase, syncToSupabase, getBonusForAmount, getBonusSlabLabelForAmount } = require('./db');
+const { initDb, query, dbData, idTrackers, saveDb, saveDbAsync, getPendingSync, loadDb, syncDbFromSupabase, syncToSupabase, getBonusForAmount, getBonusSlabLabelForAmount } = require('./db');
 
 // Controllers
 const authController = require('./controllers/authController');
@@ -45,6 +47,36 @@ app.use(async (req, res, next) => {
   } catch (err) {
     console.warn('[Sync Middleware Warning]:', err.message);
   }
+  next();
+});
+
+// Serverless Auto-Flush Middleware: Guarantees no HTTP mutation response closes before Supabase sync completes
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  const originalSend = res.send.bind(res);
+
+  let isFlushed = false;
+  const flushAndRespond = async (fn, ...args) => {
+    if (isFlushed) return fn(...args);
+    isFlushed = true;
+    try {
+      if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+        const pending = getPendingSync();
+        if (pending) {
+          await Promise.race([
+            pending,
+            new Promise(resolve => setTimeout(resolve, 5000))
+          ]);
+        }
+      }
+    } catch (err) {
+      console.warn('[Auto-Flush Middleware Warning]:', err.message);
+    }
+    return fn(...args);
+  };
+
+  res.json = (...args) => flushAndRespond(originalJson, ...args);
+  res.send = (...args) => flushAndRespond(originalSend, ...args);
   next();
 });
 
@@ -957,6 +989,8 @@ app.post('/api/admin/users/:userId/balance', adminAuth, async (req, res) => {
       ]);
     }
 
+    await saveDbAsync();
+
     return res.json({ 
       success: true, 
       message: `Successfully updated user T Coin balance to ${newBalance.toFixed(2)}` 
@@ -1012,7 +1046,7 @@ app.post('/api/withdrawals', authMiddleware, async (req, res) => {
       created_at: new Date().toISOString()
     });
     
-    saveDb();
+    await saveDbAsync();
 
     return res.json({ success: true, message: 'Withdrawal request registered successfully.' });
   } catch (err) {
@@ -1033,7 +1067,7 @@ app.post('/api/user/register-fcm', authMiddleware, async (req, res) => {
       user.fcm_tokens = user.fcm_tokens || [];
       if (!user.fcm_tokens.includes(token)) {
         user.fcm_tokens.push(token);
-        saveDb();
+        await saveDbAsync();
       }
     }
     return res.json({ success: true });
@@ -1330,7 +1364,7 @@ app.post('/api/orders/:orderId/p2p-dispute', authMiddleware, async (req, res) =>
       created_at: new Date().toISOString()
     });
 
-    saveDb();
+    await saveDbAsync();
 
     return res.json({ success: true, message: 'Dispute submitted successfully and sent to admin review.' });
   } catch (err) {
@@ -1381,7 +1415,7 @@ app.post('/api/orders/:orderId/p2p-dispute-auto', authMiddleware, async (req, re
       tx.status = 'Disputed';
     }
 
-    saveDb();
+    await saveDbAsync();
 
     return res.json({ success: true, message: 'Dispute submitted successfully and sent to admin review.' });
   } catch (err) {
@@ -1561,7 +1595,7 @@ app.post('/api/admin/disputes/:disputeId/resolve', adminAuth, async (req, res) =
       }
     }
 
-    saveDb();
+    await saveDbAsync();
     return res.json({ success: true, message: `Dispute resolved successfully with action: ${action}` });
   } catch (err) {
     return res.status(500).json({ error: err.message });
