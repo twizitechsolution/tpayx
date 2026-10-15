@@ -696,6 +696,12 @@ const executeOrderApproval = async (order, txnId) => {
     const parent = await query.get('SELECT * FROM users WHERE id = ?', [currentParentId]);
     if (!parent) break;
 
+    // CRITICAL: Seller fulfilling sell/withdrawal request or buyer themselves MUST NEVER receive commission or bonus
+    if (order.receiver_id && (parent.id == order.receiver_id || parent.id == buyer.id)) {
+      currentParentId = parent.parent_id;
+      continue;
+    }
+
     const rate = commissionRates[level - 1];
     const commAmount = depositAmountInInr * rate;
 

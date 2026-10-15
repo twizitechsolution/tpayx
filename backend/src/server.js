@@ -401,8 +401,22 @@ app.get('/api/price-ranges', async (req, res) => {
 
 app.get('/api/settings', async (req, res) => {
   try {
+    loadDb();
     const config = await query.get('SELECT * FROM settings LIMIT 1');
-    return res.json({ success: true, settings: config });
+    const fullConfig = {
+      ...(config || {}),
+      ...(dbData.settings || {})
+    };
+    let tgLink = fullConfig.telegram_link || 'https://t.me/TpayX';
+    let tgUser = fullConfig.telegram_username || '';
+    if (!tgUser && tgLink) {
+      const match = tgLink.match(/t\.me\/([^/?#]+)/);
+      if (match) tgUser = '@' + match[1];
+      else if (tgLink.startsWith('@')) tgUser = tgLink;
+    }
+    fullConfig.telegram_link = tgLink;
+    fullConfig.telegram_username = tgUser;
+    return res.json({ success: true, settings: fullConfig });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -709,7 +723,20 @@ app.post('/api/admin/settings', adminAuth, async (req, res) => {
         ];
       }
     }
-    dbData.settings.telegram_link = telegram_link || "https://t.me/TpayX";
+    let normalizedLink = telegram_link ? String(telegram_link).trim() : "https://t.me/TpayX";
+    let normalizedUsername = "";
+    if (normalizedLink.startsWith("@")) {
+      normalizedUsername = normalizedLink;
+      normalizedLink = `https://t.me/${normalizedLink.slice(1)}`;
+    } else if (normalizedLink.startsWith("http://") || normalizedLink.startsWith("https://")) {
+      const match = normalizedLink.match(/t\.me\/([^/?#]+)/);
+      if (match) normalizedUsername = "@" + match[1];
+    } else if (normalizedLink.length > 0) {
+      normalizedUsername = "@" + normalizedLink;
+      normalizedLink = `https://t.me/${normalizedLink}`;
+    }
+    dbData.settings.telegram_link = normalizedLink;
+    dbData.settings.telegram_username = normalizedUsername;
     dbData.settings.winpey_api_key = winpey_api_key || "488b923c-2b03-465e-b9df-55d018124e0c";
     dbData.settings.winpey_api_secret = winpey_api_secret || "fc4a56a2439f47c19213c747ee5693c6";
     dbData.settings.payment_mode = payment_mode || "gateway";
@@ -720,7 +747,7 @@ app.post('/api/admin/settings', adminAuth, async (req, res) => {
       Number(level1_commission || 0),
       Number(level2_commission || 0),
       Number(level3_commission || 0),
-      telegram_link || "https://t.me/TpayX",
+      normalizedLink,
       winpey_api_key || "488b923c-2b03-465e-b9df-55d018124e0c",
       winpey_api_secret || "fc4a56a2439f47c19213c747ee5693c6",
       payment_mode || "gateway",
@@ -1196,6 +1223,12 @@ app.post('/api/orders/:orderId/p2p-receive', authMiddleware, async (req, res) =>
         const parent = dbData.users.find(u => u.id == currentParentId);
         if (!parent) break;
 
+        // CRITICAL FIX: The seller fulfilling this sell request or the user itself MUST NEVER receive commission or bonus on withdrawal
+        if (parent.id == order.receiver_id || parent.id == userId || parent.id == buyer.id) {
+          currentParentId = parent.parent_id;
+          continue;
+        }
+
         const rate = commissionRates[level - 1];
         const commAmount = order.amount * rate; // calculated on principal purchase price
 
@@ -1472,6 +1505,12 @@ app.post('/api/admin/disputes/:disputeId/resolve', adminAuth, async (req, res) =
           if (!currentParentId) break;
           const parent = dbData.users.find(u => u.id == currentParentId);
           if (!parent) break;
+
+          // Seller fulfilling sell/withdrawal request MUST NOT receive commission or bonus
+          if (parent.id == order.receiver_id || parent.id == buyer.id) {
+            currentParentId = parent.parent_id;
+            continue;
+          }
 
           const rate = commissionRates[level - 1];
           const commAmount = order.amount * rate;

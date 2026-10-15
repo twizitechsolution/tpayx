@@ -514,7 +514,9 @@
       "user_commission_percent": 2.5,
       "commission_percent": 2.5,
       "min_plan_amount": 200,
-      "max_plan_amount": 100000
+      "max_plan_amount": 100000,
+      "seller_commissions_cleaned_v1": true,
+      "telegram_username": "@TpayX"
     },
     "products": [
       {

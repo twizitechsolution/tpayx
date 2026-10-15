@@ -460,11 +460,11 @@ const SettingsManager = ({ token, theme }) => {
                   <i className="fab fa-telegram-plane text-base" />
                 </div>
                 <div>
-                  <span className={`font-black text-xs uppercase tracking-wide block ${text1}`}>Telegram Support URL</span>
-                  <span className="block text-[8px] text-slate-500 font-black tracking-[0.1em] uppercase mt-1">Opens when users click Customer Support inside app</span>
+                  <span className={`font-black text-xs uppercase tracking-wide block ${text1}`}>Telegram Support Username or URL</span>
+                  <span className="block text-[8px] text-slate-500 font-black tracking-[0.1em] uppercase mt-1">Accepts @username or https://t.me/username (Synced to Mobile App)</span>
                 </div>
               </div>
-              <input type="url" placeholder="https://t.me/your_channel" value={telegramLink} onChange={e => setTelegramLink(e.target.value)}
+              <input type="text" placeholder="@TpayX or https://t.me/TpayX" value={telegramLink} onChange={e => setTelegramLink(e.target.value)}
                 className={`w-full border rounded-xl px-4 py-3 text-xs font-semibold focus:outline-none ${inp}`} required />
             </div>
 

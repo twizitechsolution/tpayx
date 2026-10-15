@@ -294,6 +294,45 @@ function repairMissingCommissions() {
   }
 }
 
+function cleanupErroneousSellerCommissions() {
+  dbData.settings = dbData.settings || {};
+  if (dbData.settings.seller_commissions_cleaned_v1) return;
+
+  let cleaned = 0;
+  const ordersWithReceiver = (dbData.orders || []).filter(o => o.receiver_id && o.receiver_id != 1);
+  
+  if (ordersWithReceiver.length > 0 && Array.isArray(dbData.transactions)) {
+    const keepTransactions = [];
+    for (const t of dbData.transactions) {
+      if (t.type === 'Commission') {
+        const matchingOrder = ordersWithReceiver.find(o => 
+          o.receiver_id == t.user_id && 
+          t.description && 
+          (t.description.includes(o.order_id) || t.description.includes(`UID: ${o.user_id}`))
+        );
+        if (matchingOrder) {
+          const seller = dbData.users.find(u => u.id == t.user_id);
+          if (seller) {
+            seller.bcoin_balance = Math.max(0, (seller.bcoin_balance || 0) - (t.amount || 0));
+            seller.total_earnings = Math.max(0, (seller.total_earnings || 0) - (t.amount || 0));
+            seller.today_profit = Math.max(0, (seller.today_profit || 0) - (t.amount || 0));
+          }
+          cleaned++;
+          continue;
+        }
+      }
+      keepTransactions.push(t);
+    }
+    dbData.transactions = keepTransactions;
+  }
+
+  dbData.settings.seller_commissions_cleaned_v1 = true;
+  if (cleaned > 0) {
+    console.log(`[Migration] Cleaned up ${cleaned} erroneous seller commission transactions.`);
+    saveDb();
+  }
+}
+
 function repairWalletBalancesForOrders23And24() {
   dbData.settings = dbData.settings || {};
   if (dbData.settings.orders_repaired_v2) {
@@ -535,7 +574,8 @@ function loadDb() {
       if (migrated) {
         saveDb();
       }
-      repairMissingCommissions();
+      // repairMissingCommissions(); // Disabled: prevents automatic generation of unintended commissions
+      cleanupErroneousSellerCommissions();
       repairWalletBalancesForOrders23And24();
       repairHistoryDepositSplits();
       repairWithdrawalTransactionTypes();
