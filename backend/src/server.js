@@ -39,9 +39,27 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Cold-boot Hydration Barrier: Guarantees NO HTTP route executes before Supabase DB is 100% hydrated
+let coldBootBarrierPromise = null;
+function ensureDatabaseHydrated() {
+  if (!coldBootBarrierPromise) {
+    coldBootBarrierPromise = (async () => {
+      console.log('[ColdBoot Barrier] Intercepted request on cold container. Initializing DB from Supabase...');
+      await initDb();
+      console.log('[ColdBoot Barrier] Database successfully hydrated from Supabase.');
+    })().catch(err => {
+      console.error('[ColdBoot Barrier Error]:', err.message);
+      coldBootBarrierPromise = null; // Allow retry on subsequent request if failed
+      throw err;
+    });
+  }
+  return coldBootBarrierPromise;
+}
+
 // Global State Hydration Middleware - Ensures all serverless containers stay 100% in sync with Supabase
 app.use(async (req, res, next) => {
   try {
+    await ensureDatabaseHydrated();
     const isMutation = req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS';
     await syncDbFromSupabase(isMutation);
   } catch (err) {
@@ -1876,19 +1894,7 @@ app.get('/api/cron/order-cleanup', async (req, res) => {
   }
 });
 
-// Middleware to ensure DB is initialized on cold-start in Vercel
-let dbInitialized = false;
-app.use(async (req, res, next) => {
-  if (!dbInitialized) {
-    try {
-      await initDb();
-      dbInitialized = true;
-    } catch (err) {
-      console.error('[DB Init Middleware Error]:', err.message);
-    }
-  }
-  next();
-});
+
 
 // --- STARTUP IN LONG-RUNNING MODE ---
 if (!process.env.VERCEL) {

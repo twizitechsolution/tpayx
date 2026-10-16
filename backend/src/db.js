@@ -70,75 +70,94 @@ let idTrackers = {
 
 let localStateVersion = 0;
 let lastSyncCheckTime = 0;
-let isSyncing = false;
+let isHydrated = false;
+let currentHydrationPromise = null;
 let currentSyncPromise = null;
 
 async function syncDbFromSupabase(force = false) {
-  if (!supabase) return;
+  if (!supabase) {
+    isHydrated = true;
+    return;
+  }
+  if (currentHydrationPromise) {
+    return currentHydrationPromise;
+  }
   const now = Date.now();
-  if (!force && localStateVersion > 0 && (now - lastSyncCheckTime < 2500)) {
+  if (!force && isHydrated && localStateVersion > 0 && (now - lastSyncCheckTime < 2500)) {
     return;
   }
   lastSyncCheckTime = now;
-  if (isSyncing) return;
-  isSyncing = true;
-  try {
-    if (force || localStateVersion === 0) {
-      console.log(`[Supabase Hydrate] Pulling remote state (local: ${localStateVersion})...`);
-      const statePromise = supabase
-        .from('settings')
-        .select('key, value')
-        .in('key', ['app_database_state', 'app_db_version']);
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase state fetch timeout')), 5000));
-      const { data: rows } = await Promise.race([statePromise, timeoutPromise]).catch(() => ({ data: null }));
+  
+  currentHydrationPromise = (async () => {
+    try {
+      if (force || !isHydrated || localStateVersion === 0) {
+        console.log(`[Supabase Hydrate] Pulling remote state (localVersion: ${localStateVersion}, isHydrated: ${isHydrated})...`);
+        const statePromise = supabase
+          .from('settings')
+          .select('key, value')
+          .in('key', ['app_database_state', 'app_db_version']);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase state fetch timeout')), 7000));
+        const { data: rows } = await Promise.race([statePromise, timeoutPromise]).catch(err => {
+          console.warn('[Supabase Hydrate Fetch Warning]:', err.message);
+          return { data: null };
+        });
 
-      if (rows && Array.isArray(rows)) {
-        const stateRow = rows.find(r => r.key === 'app_database_state');
-        const verRow = rows.find(r => r.key === 'app_db_version');
-        const remoteVersion = verRow && verRow.value ? Number(verRow.value) : Date.now();
+        if (rows && Array.isArray(rows)) {
+          const stateRow = rows.find(r => r.key === 'app_database_state');
+          const verRow = rows.find(r => r.key === 'app_db_version');
+          const remoteVersion = verRow && verRow.value ? Number(verRow.value) : Date.now();
 
-        if (stateRow && stateRow.value) {
-          const parsed = JSON.parse(stateRow.value);
-          if (parsed && parsed.dbData) {
-            const activeOtps = { ...(parsed.dbData.otps || {}), ...(dbData.otps || {}) };
-            const activeQuotes = { ...(parsed.dbData.quotes || {}), ...(dbData.quotes || {}) };
+          if (stateRow && stateRow.value) {
+            const parsed = JSON.parse(stateRow.value);
+            if (parsed && parsed.dbData) {
+              const activeOtps = { ...(parsed.dbData.otps || {}), ...(dbData.otps || {}) };
+              const activeQuotes = { ...(parsed.dbData.quotes || {}), ...(dbData.quotes || {}) };
 
-            for (let key in dbData) delete dbData[key];
-            Object.assign(dbData, parsed.dbData);
-            dbData.otps = activeOtps;
-            dbData.quotes = activeQuotes;
+              for (let key in dbData) delete dbData[key];
+              Object.assign(dbData, parsed.dbData);
+              dbData.otps = activeOtps;
+              dbData.quotes = activeQuotes;
 
-            if (parsed.idTrackers) {
-              for (let key in idTrackers) delete idTrackers[key];
-              Object.assign(idTrackers, parsed.idTrackers);
+              if (parsed.idTrackers) {
+                for (let key in idTrackers) delete idTrackers[key];
+                Object.assign(idTrackers, parsed.idTrackers);
+              }
+
+              localStateVersion = remoteVersion;
+              isHydrated = true;
+              try {
+                fs.writeFileSync(dbPath, JSON.stringify({ dbData, idTrackers }, null, 2), 'utf8');
+              } catch (e) {}
+              console.log(`[Supabase Hydrate] State hydrated successfully. Users: ${dbData.users.length}, Orders: ${dbData.orders.length}`);
             }
-
-            localStateVersion = remoteVersion;
-            try {
-              fs.writeFileSync(dbPath, JSON.stringify({ dbData, idTrackers }, null, 2), 'utf8');
-            } catch (e) {}
-            console.log(`[Supabase Hydrate] State hydrated successfully. Users: ${dbData.users.length}, Orders: ${dbData.orders.length}`);
           }
         }
+      } else {
+        const versionPromise = supabase.from('settings').select('value').eq('key', 'app_db_version').single();
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase version check timeout')), 2500));
+        const { data: verRow } = await Promise.race([versionPromise, timeoutPromise]).catch(() => ({ data: null }));
+        const remoteVersion = verRow && verRow.value ? Number(verRow.value) : 0;
+        if (remoteVersion > localStateVersion) {
+          currentHydrationPromise = null;
+          return syncDbFromSupabase(true);
+        }
       }
-    } else {
-      const versionPromise = supabase.from('settings').select('value').eq('key', 'app_db_version').single();
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase version check timeout')), 2500));
-      const { data: verRow } = await Promise.race([versionPromise, timeoutPromise]).catch(() => ({ data: null }));
-      const remoteVersion = verRow && verRow.value ? Number(verRow.value) : 0;
-      if (remoteVersion > localStateVersion) {
-        return syncDbFromSupabase(true);
-      }
+    } catch (err) {
+      console.warn('[Supabase Hydrate Warning]:', err.message);
+    } finally {
+      currentHydrationPromise = null;
     }
-  } catch (err) {
-    console.warn('[Supabase Hydrate Warning]:', err.message);
-  } finally {
-    isSyncing = false;
-  }
+  })();
+
+  return currentHydrationPromise;
 }
 
 async function syncToSupabase() {
   if (!supabase) return;
+  if (!isHydrated) {
+    console.warn('[Supabase Sync Aborted]: Cannot save to Supabase before initial hydration is complete.');
+    return;
+  }
   try {
     const newVersion = Date.now();
     localStateVersion = newVersion;
@@ -163,7 +182,7 @@ async function syncToSupabase() {
           value: String(dbData.settings?.deposit_commission_percent || 2.5),
           description: 'Deposit commission percent'
         }
-      ]),
+      ], { onConflict: 'key' }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase sync timeout')), 6000))
     ]).catch(err => {
       console.warn('[Supabase Sync State Warning]:', err.message);
@@ -247,6 +266,10 @@ function saveDb() {
     console.error('Error saving local database JSON file:', e);
   }
   if (supabase) {
+    if (!isHydrated) {
+      console.warn('[Supabase Sync Skipped]: Cannot save to Supabase before initial hydration is complete.');
+      return Promise.resolve();
+    }
     currentSyncPromise = syncToSupabase().catch(err => console.error('[Supabase Async Sync Error]:', err.message));
     return currentSyncPromise;
   }
@@ -569,7 +592,7 @@ function loadDb() {
       idTrackers.withdrawals = idTrackers.withdrawals || 0;
       idTrackers.disputes = idTrackers.disputes || 0;
 
-      // Migrate existing upi_accounts to bank_accounts
+      // Migrate existing upi_accounts to bank_accounts in memory
       if (dbData.upi_accounts) {
         dbData.bank_accounts = dbData.upi_accounts.map(acc => ({
           id: acc.id,
@@ -584,11 +607,9 @@ function loadDb() {
         idTrackers.bank_accounts = Math.max(idTrackers.upi_accounts || 0, dbData.bank_accounts.length);
         delete dbData.upi_accounts;
         delete idTrackers.upi_accounts;
-        saveDb();
       }
 
-      // Migrate existing user records to include username and is_blocked properties
-      let migrated = false;
+      // Ensure user records have username and is_blocked properties
       dbData.users.forEach(u => {
         if (!u.username) {
           if (u.uid === 'M118248') {
@@ -596,35 +617,11 @@ function loadDb() {
           } else {
             u.username = `TpayX_${u.uid}`;
           }
-          migrated = true;
         }
         if (u.is_blocked === undefined) {
           u.is_blocked = false;
-          migrated = true;
         }
       });
-      if (migrated) {
-        saveDb();
-      }
-      // repairMissingCommissions(); // Disabled: prevents automatic generation of unintended commissions
-      cleanupErroneousSellerCommissions();
-      repairWalletBalancesForOrders23And24();
-      repairHistoryDepositSplits();
-      repairWithdrawalTransactionTypes();
-
-      // Retroactively repair negative balances by removing the negative sign (making them positive)
-      let fixedBalancesCount = 0;
-      dbData.users.forEach(u => {
-        if (u.bcoin_balance < 0) {
-          const original = u.bcoin_balance;
-          u.bcoin_balance = Math.abs(u.bcoin_balance);
-          console.log(`[Repair] Converted negative T-Coin balance for user ${u.username} (UID: ${u.uid}) from ${original} to ${u.bcoin_balance}`);
-          fixedBalancesCount++;
-        }
-      });
-      if (fixedBalancesCount > 0) {
-        saveDb();
-      }
     } catch (e) {
       console.error('Error loading JSON database:', e);
     }
@@ -1331,6 +1328,44 @@ const query = {
   }
 };
 
+function runStartupMigrations() {
+  try {
+    let modified = false;
+    dbData.users.forEach(u => {
+      if (!u.username) {
+        u.username = u.uid === 'M118248' ? 'Bee_dg9mz6bc' : `TpayX_${u.uid}`;
+        modified = true;
+      }
+      if (u.is_blocked === undefined) {
+        u.is_blocked = false;
+        modified = true;
+      }
+    });
+
+    cleanupErroneousSellerCommissions();
+    repairWalletBalancesForOrders23And24();
+    repairHistoryDepositSplits();
+    repairWithdrawalTransactionTypes();
+
+    let fixedBalancesCount = 0;
+    dbData.users.forEach(u => {
+      if (u.bcoin_balance < 0) {
+        const original = u.bcoin_balance;
+        u.bcoin_balance = Math.abs(u.bcoin_balance);
+        console.log(`[Repair] Converted negative T-Coin balance for user ${u.username} (UID: ${u.uid}) from ${original} to ${u.bcoin_balance}`);
+        fixedBalancesCount++;
+        modified = true;
+      }
+    });
+
+    if (modified || fixedBalancesCount > 0) {
+      saveDb();
+    }
+  } catch (err) {
+    console.error('[Startup Migrations Error]:', err.message);
+  }
+}
+
 // Seed script wrapping
 async function initDb() {
   loadDb();
@@ -1338,6 +1373,8 @@ async function initDb() {
     console.log('[Supabase Init] Hydrating latest remote state from Supabase on startup...');
     await syncDbFromSupabase(true);
   }
+  isHydrated = true;
+  runStartupMigrations();
 
   // Initialize arrays to prevent runtime errors
   dbData.products = dbData.products || [];
