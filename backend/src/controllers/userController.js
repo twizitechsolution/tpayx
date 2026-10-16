@@ -14,12 +14,14 @@ exports.getProfile = async (req, res) => {
     const sellsQuery = await query.get('SELECT SUM(amount) as sum FROM transactions WHERE user_id = ? AND type = "Withdraw" AND amount < 0', [userId]);
     user.total_sells = Math.abs(sellsQuery?.sum || 0);
 
-    // Get total completed INR deposit orders sum to show as INR wallet value
+    // Get total completed INR deposit orders sum for statistics without overwriting actual wallet balance
     const depositSum = await query.get(
       'SELECT SUM(amount) as total FROM orders WHERE user_id = ? AND status = "Completed" AND asset_type = "INR"',
       [userId]
     );
-    user.inr_balance = depositSum ? (Number(depositSum.total) || 0) : 0;
+    user.total_deposited = depositSum ? (Number(depositSum.total) || 0) : 0;
+    user.inr_balance = Number(user.inr_balance || 0);
+    user.bcoin_balance = Number(user.bcoin_balance || 0);
 
     // Get tasks status
     const tasks = await query.all('SELECT task_key, completed, claimed FROM user_tasks WHERE user_id = ?', [userId]);

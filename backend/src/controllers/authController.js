@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { query, dbData, saveDb, loadDb } = require('../db');
+const { query, dbData, saveDb, saveDbAsync, loadDb, supabase } = require('../db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'TpayX_secret_jwt_key';
 
@@ -30,7 +30,7 @@ async function generateUniqueRefCode() {
 }
 
 // Persistent OTP helpers
-function storeOtp(mobile, otp) {
+async function storeOtp(mobile, otp) {
   loadDb();
   dbData.otps = dbData.otps || {};
   dbData.otps[mobile] = {
@@ -38,30 +38,93 @@ function storeOtp(mobile, otp) {
     expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes validity window
   };
   saveDb();
+
+  // Directly persist to Supabase settings table for instant multi-container access
+  try {
+    if (supabase) {
+      await Promise.race([
+        supabase.from('settings').upsert({
+          key: `otp_${mobile}`,
+          value: JSON.stringify({
+            otp: String(otp).trim(),
+            expiresAt: Date.now() + 10 * 60 * 1000
+          }),
+          description: `Active OTP code for ${mobile}`
+        }, { onConflict: 'key' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase OTP store timeout')), 3500))
+      ]);
+      console.log(`[Supabase OTP] Stored OTP for ${mobile} successfully.`);
+    }
+  } catch (err) {
+    console.warn('[Supabase OTP Store Warning]:', err.message);
+  }
 }
 
-function verifyAndConsumeOtp(mobile, otp) {
-  loadDb();
+async function verifyAndConsumeOtp(mobile, otp) {
   const cleanOtp = String(otp || '').trim();
+  if (!cleanOtp) {
+    return { valid: false, error: 'Please enter the OTP' };
+  }
+
+  // Universal developer / test bypass
+  if (cleanOtp === '123456') {
+    return { valid: true };
+  }
+
+  loadDb();
   const entry = dbData.otps && dbData.otps[mobile];
 
   if (entry) {
     if (Date.now() <= entry.expiresAt && (entry.otp === cleanOtp || cleanOtp === '123456')) {
       delete dbData.otps[mobile];
       saveDb();
+      if (supabase) {
+        supabase.from('settings').delete().eq('key', `otp_${mobile}`).catch(() => {});
+      }
       return { valid: true };
     }
     if (Date.now() > entry.expiresAt) {
       delete dbData.otps[mobile];
       saveDb();
+      if (supabase) {
+        supabase.from('settings').delete().eq('key', `otp_${mobile}`).catch(() => {});
+      }
       return { valid: false, error: 'OTP has expired. Please request a new OTP.' };
     }
-    return { valid: false, error: 'Incorrect OTP entered. Please check the code and try again.' };
   }
 
-  // Fallback for developer/test OTP
-  if (cleanOtp === '123456') {
-    return { valid: true };
+  // Query Supabase remote settings directly if not in local memory or mismatched
+  try {
+    if (supabase) {
+      const { data: row } = await Promise.race([
+        supabase.from('settings').select('value').eq('key', `otp_${mobile}`).single(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase OTP query timeout')), 3000))
+      ]);
+
+      if (row && row.value) {
+        const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+        if (parsed && parsed.otp) {
+          if (Date.now() <= parsed.expiresAt && (String(parsed.otp).trim() === cleanOtp || cleanOtp === '123456')) {
+            // Delete consumed OTP
+            supabase.from('settings').delete().eq('key', `otp_${mobile}`).catch(() => {});
+            if (dbData.otps) delete dbData.otps[mobile];
+            saveDb();
+            return { valid: true };
+          }
+          if (Date.now() > parsed.expiresAt) {
+            supabase.from('settings').delete().eq('key', `otp_${mobile}`).catch(() => {});
+            return { valid: false, error: 'OTP has expired. Please request a new OTP.' };
+          }
+          return { valid: false, error: 'Incorrect OTP entered. Please check the code and try again.' };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Supabase OTP Verify Warning]:', err.message);
+  }
+
+  if (entry && entry.otp !== cleanOtp) {
+    return { valid: false, error: 'Incorrect OTP entered. Please check the code and try again.' };
   }
 
   return { valid: false, error: 'Invalid or expired OTP. Please request a new OTP.' };
@@ -88,7 +151,7 @@ exports.sendOtp = async (req, res) => {
 
   // Generate a simple 6-digit OTP
   const otp = String(Math.floor(100000 + Math.random() * 900000));
-  storeOtp(mobile, otp);
+  await storeOtp(mobile, otp);
 
   // Synchronously await Real SMS Gateway dispatch so Vercel Serverless environment does NOT freeze process before sending!
   try {
@@ -146,7 +209,7 @@ exports.signup = async (req, res) => {
     }
 
     // Verify OTP (allow 123456 fallback for test environment)
-    const otpRes = verifyAndConsumeOtp(mobile, otp);
+    const otpRes = await verifyAndConsumeOtp(mobile, otp);
     if (!otpRes.valid) {
       return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
     }
@@ -187,7 +250,8 @@ exports.signup = async (req, res) => {
     // Retrieve full user record to return
     const user = await query.get('SELECT id, uid, mobile, inr_balance, bcoin_balance, usdt_balance, total_earnings, today_profit, yesterday_profit, ref_code FROM users WHERE id = ?', [userId]);
     if (user) {
-      user.inr_balance = 0;
+      user.inr_balance = Number(user.inr_balance || 0);
+      user.bcoin_balance = Number(user.bcoin_balance || 0);
     }
 
     return res.status(201).json({
@@ -211,7 +275,7 @@ exports.login = async (req, res) => {
   }
 
   // Verify OTP (allow 123456 fallback for test environment)
-  const otpRes = verifyAndConsumeOtp(mobile, otp);
+  const otpRes = await verifyAndConsumeOtp(mobile, otp);
   if (!otpRes.valid) {
     return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
   }
@@ -236,12 +300,9 @@ exports.login = async (req, res) => {
     // Exclude password hash from response
     delete user.password_hash;
 
-    // Get total completed INR deposit orders sum to show as INR wallet value
-    const depositSum = await query.get(
-      'SELECT SUM(amount) as total FROM orders WHERE user_id = ? AND status = "Completed" AND asset_type = "INR"',
-      [user.id]
-    );
-    user.inr_balance = depositSum ? (Number(depositSum.total) || 0) : 0;
+    // Preserve actual user wallet balances
+    user.inr_balance = Number(user.inr_balance || 0);
+    user.bcoin_balance = Number(user.bcoin_balance || 0);
 
     return res.json({
       success: true,
@@ -270,7 +331,7 @@ exports.changePassword = async (req, res) => {
 
   try {
     const user = await query.get('SELECT mobile FROM users WHERE id = ?', [userId]);
-    const otpRes = verifyAndConsumeOtp(user.mobile, otp);
+    const otpRes = await verifyAndConsumeOtp(user.mobile, otp);
     if (!otpRes.valid) {
       return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
     }

@@ -73,74 +73,156 @@ exports.changeAdminPassword = async (req, res) => {
   }
 };
 
-exports.getDashboardStats = async (req, res) => {
-  try {
-    const userCount = await query.get('SELECT COUNT(*) as count FROM users');
-    const depositVolume = await query.get('SELECT SUM(amount) as sum FROM orders WHERE status = "Completed"');
-    const pendingCount = await query.get('SELECT COUNT(*) as count FROM orders WHERE status = "Confirming"');
-    const completedCount = await query.get('SELECT COUNT(*) as count FROM orders WHERE status = "Completed"');
-    const canceledCount = await query.get('SELECT COUNT(*) as count FROM orders WHERE status = "Canceled"');
+function buildDashboardStats(dbData) {
+  const users = dbData.users || [];
+  const orders = dbData.orders || [];
+  const txns = dbData.transactions || [];
+  const products = dbData.products || [];
 
-    // 1. Calculate withdrawals
-    const txns = await query.all('SELECT amount, type FROM transactions WHERE type = "Withdraw"');
-    const totalWithdrawals = txns.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0);
+  const userCount = users.length;
+  const completedOrders = orders.filter(o => o.status === 'Completed');
+  const depositVolume = completedOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0);
+  const pendingCount = orders.filter(o => o.status === 'Confirming').length;
+  const completedCount = completedOrders.length;
+  const canceledCount = orders.filter(o => o.status === 'Canceled').length;
 
-    // 2. Active plans breakdown
-    const products = await query.all('SELECT * FROM products');
-    const completedOrders = await query.all('SELECT * FROM orders WHERE status = "Completed"');
-    const activePlansBreakdown = products.map(p => {
-      const matchingOrders = completedOrders.filter(o => Math.abs(o.amount - p.amount) < 0.01);
-      return {
-        id: p.id,
-        name: p.name,
-        amount: p.amount,
-        type: p.type,
-        count: matchingOrders.length,
-        totalValue: matchingOrders.reduce((sum, o) => sum + o.amount, 0)
-      };
+  const totalWithdrawals = txns
+    .filter(t => t.type === 'Withdraw' && t.amount < 0)
+    .reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
+
+  const activePlansBreakdown = products.map(p => {
+    const matchingOrders = completedOrders.filter(o => Math.abs(Number(o.amount) - Number(p.amount)) < 0.01);
+    return {
+      id: p.id,
+      name: p.name,
+      amount: p.amount,
+      type: p.type,
+      count: matchingOrders.length,
+      totalValue: matchingOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0)
+    };
+  });
+
+  const chartData = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateString = d.toISOString().split('T')[0];
+    const label = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+
+    const dayDeposits = completedOrders
+      .filter(o => o.created_at && o.created_at.startsWith(dateString))
+      .reduce((sum, o) => sum + Number(o.amount || 0), 0);
+
+    const dayWithdrawals = txns
+      .filter(t => t.type === 'Withdraw' && t.amount < 0 && t.created_at && t.created_at.startsWith(dateString))
+      .reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
+
+    chartData.push({
+      date: label,
+      deposits: dayDeposits,
+      withdrawals: dayWithdrawals
     });
+  }
 
-    // 3. Generate 7-day chart data
-    const chartData = [];
-    const allOrders = await query.all('SELECT amount, status, created_at FROM orders');
-    const allTxns = await query.all('SELECT amount, type, created_at FROM transactions WHERE type = "Withdraw"');
-    
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateString = d.toISOString().split('T')[0];
-      const label = d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
-      
-      const dayDeposits = allOrders.filter(o => {
-        if (o.status !== 'Completed') return false;
-        return o.created_at && o.created_at.startsWith(dateString);
-      }).reduce((sum, o) => sum + o.amount, 0);
-      
-      const dayWithdrawals = allTxns.filter(t => {
-        return t.amount < 0 && t.created_at && t.created_at.startsWith(dateString);
-      }).reduce((sum, t) => sum + Math.abs(t.amount), 0);
-      
-      chartData.push({
-        date: label,
-        deposits: dayDeposits,
-        withdrawals: dayWithdrawals
-      });
+  return {
+    totalUsers: userCount,
+    totalVolume: depositVolume,
+    totalDeposits: depositVolume,
+    totalWithdrawals,
+    totalActivePlans: depositVolume,
+    pendingOrders: pendingCount,
+    completedOrders: completedCount,
+    canceledOrders: canceledCount,
+    activePlansBreakdown,
+    chartData
+  };
+}
+
+function buildUsersList(dbData) {
+  const allUsers = dbData.users || [];
+  const allTxns = dbData.transactions || [];
+  const allBanks = dbData.bank_accounts || [];
+
+  const withdrawalMap = {};
+  allTxns.forEach(w => {
+    if (w.type === 'Withdraw') {
+      withdrawalMap[w.user_id] = (withdrawalMap[w.user_id] || 0) + Math.abs(Number(w.amount || 0));
+    }
+  });
+
+  const bankMap = {};
+  allBanks.forEach(acc => {
+    if (acc.status === 'Active' || !bankMap[acc.user_id]) {
+      bankMap[acc.user_id] = {
+        bank_name: acc.bank_name,
+        account_holder: acc.account_holder,
+        account_number: acc.account_number,
+        ifsc_code: acc.ifsc_code || acc.ifsc || 'N/A'
+      };
+    }
+  });
+
+  return allUsers.map(u => ({
+    id: u.id,
+    uid: u.uid,
+    username: u.username || u.name || `TpayX_${u.uid}`,
+    mobile: u.mobile,
+    inr_balance: Number(u.inr_balance || 0),
+    bcoin_balance: Number(u.bcoin_balance || 0),
+    total_earnings: Number(u.total_earnings || 0),
+    today_profit: Number(u.today_profit || 0),
+    is_blocked: !!u.is_blocked,
+    created_at: u.created_at,
+    total_withdrawals: withdrawalMap[u.id] || 0,
+    bank_details: bankMap[u.id] || null
+  })).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+}
+
+function buildOrdersList(dbData) {
+  const allOrders = dbData.orders || [];
+  const allUsers = dbData.users || [];
+  const allBanks = dbData.bank_accounts || [];
+
+  const userMap = new Map();
+  allUsers.forEach(u => userMap.set(Number(u.id), u));
+
+  return allOrders.map(order => {
+    const u = userMap.get(Number(order.user_id)) || {};
+    const recId = order.receiver_id;
+    let receiver_mobile = 'N/A';
+    let receiver_bank = null;
+
+    if (recId && recId != 1) {
+      const receiverUser = userMap.get(Number(recId));
+      const bankAcc = allBanks.find(b => b.user_id == recId && b.status === 'Active') ||
+                      allBanks.find(b => b.user_id == recId);
+      receiver_mobile = receiverUser ? receiverUser.mobile : 'N/A';
+      receiver_bank = bankAcc ? {
+        bank_name: bankAcc.bank_name,
+        account_holder: bankAcc.account_holder,
+        account_number: bankAcc.account_number,
+        ifsc_code: bankAcc.ifsc_code || bankAcc.ifsc || 'N/A',
+        upi_id: bankAcc.upi_id || 'N/A'
+      } : null;
     }
 
+    return {
+      ...order,
+      user_uid: u.uid || `UID_${order.user_id}`,
+      user_mobile: u.mobile || 'N/A',
+      receiver_mobile,
+      receiver_bank
+    };
+  }).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+}
+
+exports.getDashboardStats = async (req, res) => {
+  try {
+    const { dbData } = require('../db');
+    const stats = buildDashboardStats(dbData);
     return res.status(200).json({
       success: true,
-      stats: {
-        totalUsers: userCount?.count || 0,
-        totalVolume: depositVolume?.sum || 0,
-        totalDeposits: depositVolume?.sum || 0,
-        totalWithdrawals,
-        totalActivePlans: depositVolume?.sum || 0,
-        pendingOrders: pendingCount?.count || 0,
-        completedOrders: completedCount?.count || 0,
-        canceledOrders: canceledCount?.count || 0,
-        activePlansBreakdown,
-        chartData
-      }
+      stats
     });
   } catch (error) {
     console.error('Error fetching admin dashboard statistics:', error);
@@ -150,36 +232,8 @@ exports.getDashboardStats = async (req, res) => {
 
 exports.getUsersList = async (req, res) => {
   try {
-    const users = await query.all('SELECT id, uid, username, mobile, inr_balance, bcoin_balance, total_earnings, today_profit, is_blocked, created_at FROM users ORDER BY id DESC');
-    
-    // 1. Fetch total withdrawals for all users
-    const withdrawals = await query.all('SELECT user_id, amount FROM transactions WHERE type = "Withdraw"');
-    const withdrawalMap = {};
-    withdrawals.forEach(w => {
-      withdrawalMap[w.user_id] = (withdrawalMap[w.user_id] || 0) + Math.abs(w.amount || 0);
-    });
-
-    // 2. Fetch bank accounts for all users
-    const bankAccounts = await query.all('SELECT * FROM bank_accounts');
-    const bankMap = {};
-    bankAccounts.forEach(acc => {
-      if (acc.status === 'Active' || !bankMap[acc.user_id]) {
-        bankMap[acc.user_id] = {
-          bank_name: acc.bank_name,
-          account_holder: acc.account_holder,
-          account_number: acc.account_number,
-          ifsc_code: acc.ifsc_code
-        };
-      }
-    });
-
-    // Enrich users with total_withdrawals and bank_details
-    users.forEach(u => {
-      u.total_withdrawals = withdrawalMap[u.id] || 0;
-      u.bank_details = bankMap[u.id] || null;
-      u.is_blocked = u.is_blocked || false;
-    });
-
+    const { dbData } = require('../db');
+    const users = buildUsersList(dbData);
     return res.status(200).json({
       success: true,
       users
@@ -187,6 +241,24 @@ exports.getUsersList = async (req, res) => {
   } catch (error) {
     console.error('Error fetching user list:', error);
     return res.status(500).json({ error: 'Internal server error while loading users directory.' });
+  }
+};
+
+exports.getDashboardOverview = async (req, res) => {
+  try {
+    const { dbData } = require('../db');
+    const stats = buildDashboardStats(dbData);
+    const users = buildUsersList(dbData);
+    const orders = buildOrdersList(dbData);
+    return res.status(200).json({
+      success: true,
+      stats,
+      users,
+      orders
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard overview:', error);
+    return res.status(500).json({ error: 'Internal server error while loading overview.' });
   }
 };
 

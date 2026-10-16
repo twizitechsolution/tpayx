@@ -690,33 +690,47 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
     headers: { Authorization: `Bearer ${token}` }
   });
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      // 1. Stats
-      const statsRes = await axios.get(`${API_BASE}/stats`, getAuthHeaders());
-      if (statsRes.data.success) setStats(statsRes.data.stats);
+      // 1. Ultra-fast consolidated overview endpoint
+      try {
+        const overviewRes = await axios.get(`${API_BASE}/overview`, getAuthHeaders());
+        if (overviewRes.data && overviewRes.data.success) {
+          if (overviewRes.data.stats) setStats(overviewRes.data.stats);
+          if (overviewRes.data.orders) setOrders(overviewRes.data.orders);
+          if (overviewRes.data.users) setUsers(overviewRes.data.users);
+          return;
+        }
+      } catch (overviewErr) {
+        console.warn('Overview endpoint fallback:', overviewErr.message);
+      }
 
-      // 2. Orders
-      const ordersRes = await axios.get(`${API_BASE}/orders`, getAuthHeaders());
-      if (ordersRes.data.success) setOrders(ordersRes.data.orders);
+      // 2. Parallel fallback
+      const [statsRes, ordersRes, usersRes] = await Promise.all([
+        axios.get(`${API_BASE}/stats`, getAuthHeaders()).catch(() => ({ data: { success: false } })),
+        axios.get(`${API_BASE}/orders`, getAuthHeaders()).catch(() => ({ data: { success: false } })),
+        axios.get(`${API_BASE}/users`, getAuthHeaders()).catch(() => ({ data: { success: false } }))
+      ]);
 
-      // 3. Users
-      const usersRes = await axios.get(`${API_BASE}/users`, getAuthHeaders());
-      if (usersRes.data.success) setUsers(usersRes.data.users);
+      if (statsRes.data?.success && statsRes.data.stats) setStats(statsRes.data.stats);
+      if (ordersRes.data?.success && ordersRes.data.orders) setOrders(ordersRes.data.orders);
+      if (usersRes.data?.success && usersRes.data.users) setUsers(usersRes.data.users);
     } catch (error) {
       console.error('Fetch error:', error);
       if (error.response?.status === 401 || error.response?.status === 403) {
         handleLogout();
       }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-  }, [activeTab]);
+    if (token) {
+      fetchData();
+    }
+  }, [token]);
 
   const triggerToast = (msg) => {
     setToastMsg(msg);

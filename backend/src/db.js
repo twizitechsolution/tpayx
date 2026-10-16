@@ -92,7 +92,7 @@ async function syncDbFromSupabase(force = false) {
     return currentHydrationPromise;
   }
   const now = Date.now();
-  if (!force && isHydrated && localStateVersion > 0 && (now - lastSyncCheckTime < 2500)) {
+  if (!force && isHydrated && localStateVersion > 0 && (now - lastSyncCheckTime < 10000)) {
     return;
   }
   lastSyncCheckTime = now;
@@ -105,7 +105,7 @@ async function syncDbFromSupabase(force = false) {
           .from('settings')
           .select('key, value')
           .in('key', ['app_database_state', 'app_db_version']);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase state fetch timeout')), 7000));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase state fetch timeout')), 18000));
         const { data: rows } = await Promise.race([statePromise, timeoutPromise]).catch(err => {
           console.warn('[Supabase Hydrate Fetch Warning]:', err.message);
           return { data: null };
@@ -143,7 +143,7 @@ async function syncDbFromSupabase(force = false) {
         }
       } else {
         const versionPromise = supabase.from('settings').select('value').eq('key', 'app_db_version').single();
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase version check timeout')), 2500));
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase version check timeout')), 6000));
         const { data: verRow } = await Promise.race([versionPromise, timeoutPromise]).catch(() => ({ data: null }));
         const remoteVersion = verRow && verRow.value ? Number(verRow.value) : 0;
         if (remoteVersion > localStateVersion) {
@@ -163,10 +163,6 @@ async function syncDbFromSupabase(force = false) {
 
 async function syncToSupabase() {
   if (!supabase) return;
-  if (!isHydrated) {
-    console.warn('[Supabase Sync Aborted]: Cannot save to Supabase before initial hydration is complete.');
-    return;
-  }
   try {
     const newVersion = Date.now();
     localStateVersion = newVersion;
@@ -190,6 +186,16 @@ async function syncToSupabase() {
           key: 'deposit_commission_percent',
           value: String(dbData.settings?.deposit_commission_percent || 2.5),
           description: 'Deposit commission percent'
+        },
+        {
+          key: 'telegram_link',
+          value: String(dbData.settings?.telegram_link || 'https://t.me/TpayX'),
+          description: 'Support Telegram link'
+        },
+        {
+          key: 'telegram_username',
+          value: String(dbData.settings?.telegram_username || '@TpayX'),
+          description: 'Support Telegram username'
         }
       ], { onConflict: 'key' }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase sync timeout')), 6000))
@@ -275,10 +281,6 @@ function saveDb() {
     console.error('Error saving local database JSON file:', e);
   }
   if (supabase) {
-    if (!isHydrated) {
-      console.warn('[Supabase Sync Skipped]: Cannot save to Supabase before initial hydration is complete.');
-      return Promise.resolve();
-    }
     currentSyncPromise = syncToSupabase().catch(err => console.error('[Supabase Async Sync Error]:', err.message));
     return currentSyncPromise;
   }
@@ -631,6 +633,7 @@ function loadDb() {
           u.is_blocked = false;
         }
       });
+      isHydrated = true;
     } catch (e) {
       console.error('Error loading JSON database:', e);
     }
@@ -1622,6 +1625,7 @@ function getBonusSlabLabelForAmount(amount) {
 
 module.exports = {
   db: {},
+  supabase,
   query,
   initDb,
   dbData,

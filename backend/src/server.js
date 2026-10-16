@@ -490,42 +490,61 @@ app.post('/api/admin/auth/login', adminController.adminLogin);
 // Protected Admin Management Endpoints
 app.post('/api/admin/change-password', adminAuth, adminController.changeAdminPassword);
 app.get('/api/admin/stats', adminAuth, adminController.getDashboardStats);
+app.get('/api/admin/overview', adminAuth, adminController.getDashboardOverview);
 app.get('/api/admin/reports', adminAuth, adminController.getReports);
 app.get('/api/admin/users', adminAuth, adminController.getUsersList);
 app.post('/api/admin/users/:id/toggle-block', adminAuth, adminController.toggleUserBlock);
 app.get('/api/admin/orders', adminAuth, async (req, res) => {
   try {
-    const list = await query.all(`
-      SELECT orders.*, users.uid as user_uid, users.mobile as user_mobile 
-      FROM orders 
-      LEFT JOIN users ON orders.user_id = users.id 
-      ORDER BY orders.id DESC
-    `);
+    const { dbData } = require('./db');
+    const allOrders = dbData.orders || [];
+    const allUsers = dbData.users || [];
+    const allBanks = dbData.bank_accounts || [];
 
-    const { loadDb, dbData } = require('./db');
-    loadDb();
+    const userMap = new Map();
+    allUsers.forEach(u => userMap.set(Number(u.id), u));
 
-    list.forEach(order => {
+    const list = allOrders.map(order => {
+      const u = userMap.get(Number(order.user_id)) || {};
       const recId = order.receiver_id;
+      let receiver_mobile = 'N/A';
+      let receiver_uid = 'N/A';
+      let receiver_name = 'P2P Seller';
+      let receiver_bank = 'Bank';
+      let receiver_account = 'N/A';
+      let receiver_upi = 'N/A';
+
       if (recId && recId != 1) {
-        const receiverUser = (dbData.users || []).find(u => u.id == recId);
-        const bankAcc = (dbData.bank_accounts || []).find(b => b.user_id == recId && b.status === 'Active') ||
-                        (dbData.bank_accounts || []).find(b => b.user_id == recId);
-        order.receiver_mobile = receiverUser ? receiverUser.mobile : 'N/A';
-        order.receiver_uid = receiverUser ? receiverUser.uid : 'N/A';
-        order.receiver_name = bankAcc ? bankAcc.account_holder : (receiverUser ? (receiverUser.username || 'P2P Seller') : 'P2P Seller');
-        order.receiver_bank = bankAcc ? bankAcc.bank_name : 'Bank';
-        order.receiver_account = bankAcc ? bankAcc.account_number : 'N/A';
-        order.receiver_upi = bankAcc ? bankAcc.upi_id : (receiverUser ? `${receiverUser.mobile}@upi` : 'N/A');
+        const receiverUser = userMap.get(Number(recId));
+        const bankAcc = allBanks.find(b => b.user_id == recId && b.status === 'Active') ||
+                        allBanks.find(b => b.user_id == recId);
+        receiver_mobile = receiverUser ? receiverUser.mobile : 'N/A';
+        receiver_uid = receiverUser ? receiverUser.uid : 'N/A';
+        receiver_name = bankAcc ? bankAcc.account_holder : (receiverUser ? (receiverUser.username || 'P2P Seller') : 'P2P Seller');
+        receiver_bank = bankAcc ? bankAcc.bank_name : 'Bank';
+        receiver_account = bankAcc ? bankAcc.account_number : 'N/A';
+        receiver_upi = bankAcc ? bankAcc.upi_id : (receiverUser ? `${receiverUser.mobile}@upi` : 'N/A');
       } else {
-        order.receiver_mobile = '8763527330';
-        order.receiver_uid = 'M118248';
-        order.receiver_name = 'Tushar Admin';
-        order.receiver_bank = 'HDFC Bank';
-        order.receiver_account = '50100481729381';
-        order.receiver_upi = '8763527330@upi';
+        receiver_mobile = '8763527330';
+        receiver_uid = 'M118248';
+        receiver_name = 'Tushar Admin';
+        receiver_bank = 'HDFC Bank';
+        receiver_account = '50100481729381';
+        receiver_upi = '8763527330@upi';
       }
-    });
+
+      return {
+        ...order,
+        user_uid: u.uid || `UID_${order.user_id}`,
+        user_mobile: u.mobile || 'N/A',
+        receiver_mobile,
+        receiver_uid,
+        receiver_name,
+        receiver_bank,
+        receiver_account,
+        receiver_upi
+      };
+    }).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 
     return res.json({ success: true, orders: list });
   } catch (err) {

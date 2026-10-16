@@ -1816,7 +1816,8 @@
 
   async function handlePlanBuy(amount, assetType = 'INR') {
     const token = localStorage.getItem('user_token');
-    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+    const isCapOrApp = (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:' || window.location.origin.includes('capacitor://') || (window.location.origin.includes('localhost') && !window.location.port));
+    const BASE_URL = isCapOrApp ? 'https://tpayx-backend.vercel.app' : (window.location.origin.includes('localhost') ? 'http://localhost:5001' : '');
 
     try {
       showToast('Fetching receiver details...');
@@ -1900,7 +1901,8 @@
     btn.textContent = 'Submitting...';
 
     const token = localStorage.getItem('user_token');
-    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+    const isCapOrApp = (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:' || window.location.origin.includes('capacitor://') || (window.location.origin.includes('localhost') && !window.location.port));
+    const BASE_URL = isCapOrApp ? 'https://tpayx-backend.vercel.app' : (window.location.origin.includes('localhost') ? 'http://localhost:5001' : '');
 
     try {
       const res = await fetch(`${BASE_URL}/api/orders`, {
@@ -1982,7 +1984,8 @@
     const btn = document.getElementById(btnId);
     if (btn) btn.disabled = true;
 
-    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+    const isCapOrApp = (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:' || window.location.origin.includes('capacitor://') || (window.location.origin.includes('localhost') && !window.location.port));
+    const BASE_URL = isCapOrApp ? 'https://tpayx-backend.vercel.app' : (window.location.origin.includes('localhost') ? 'http://localhost:5001' : '');
     fetch(`${BASE_URL}/api/auth/send-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2051,7 +2054,8 @@
       submitBtn.textContent = 'Creating Account...';
     }
 
-    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+    const isCapOrApp = (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:' || window.location.origin.includes('capacitor://') || (window.location.origin.includes('localhost') && !window.location.port));
+    const BASE_URL = isCapOrApp ? 'https://tpayx-backend.vercel.app' : (window.location.origin.includes('localhost') ? 'http://localhost:5001' : '');
     fetch(`${BASE_URL}/api/auth/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2095,7 +2099,8 @@
       return;
     }
 
-    const BASE_URL = window.location.origin.includes('localhost') ? 'http://localhost:5001' : '';
+    const isCapOrApp = (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:' || window.location.origin.includes('capacitor://') || (window.location.origin.includes('localhost') && !window.location.port));
+    const BASE_URL = isCapOrApp ? 'https://tpayx-backend.vercel.app' : (window.location.origin.includes('localhost') ? 'http://localhost:5001' : '');
     fetch(`${BASE_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
