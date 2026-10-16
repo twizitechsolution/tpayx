@@ -126,6 +126,42 @@
         "yesterday_profit": 0,
         "is_blocked": false,
         "created_at": "2026-09-19T18:59:12.626Z"
+      },
+      {
+        "id": 1006,
+        "created_at": "2026-10-16T21:37:53.812Z",
+        "uid": "M305230",
+        "mobile": "9126648882",
+        "password_hash": "$2a$10$VVRwBDUb6/ui63qQB/EZF.UihqwSc9.M0OQVEbNQp9VkOa8nJPljq",
+        "pin": null,
+        "ref_code": "tp8jz1nvzl",
+        "parent_id": 1,
+        "inr_balance": 0,
+        "bcoin_balance": 0,
+        "usdt_balance": 0,
+        "total_earnings": 0,
+        "today_profit": 0,
+        "yesterday_profit": 0,
+        "username": "TpayX_M305230",
+        "is_blocked": false
+      },
+      {
+        "id": 1007,
+        "created_at": "2026-10-16T21:38:22.613Z",
+        "uid": "M481641",
+        "mobile": "9447035615",
+        "password_hash": "$2a$10$tx/B3EkKMjW.Scp7Y4qm7O5I62YpTKft/NaT06yGLo3W/oM12XlMm",
+        "pin": null,
+        "ref_code": "tpik38rltb",
+        "parent_id": 1,
+        "inr_balance": 0,
+        "bcoin_balance": 0,
+        "usdt_balance": 0,
+        "total_earnings": 0,
+        "today_profit": 0,
+        "yesterday_profit": 0,
+        "username": "TpayX_M481641",
+        "is_blocked": false
       }
     ],
     "orders": [
@@ -485,6 +521,54 @@
         "completed": 0,
         "claimed": 0,
         "created_at": "2026-07-31T17:24:12.142Z"
+      },
+      {
+        "id": 7,
+        "created_at": "2026-10-16T21:37:54.124Z",
+        "user_id": 1006,
+        "task_key": "set_pin",
+        "completed": 0,
+        "claimed": 0
+      },
+      {
+        "id": 8,
+        "created_at": "2026-10-16T21:37:54.591Z",
+        "user_id": 1006,
+        "task_key": "add_support",
+        "completed": 0,
+        "claimed": 0
+      },
+      {
+        "id": 9,
+        "created_at": "2026-10-16T21:37:54.898Z",
+        "user_id": 1006,
+        "task_key": "join_bot",
+        "completed": 0,
+        "claimed": 0
+      },
+      {
+        "id": 10,
+        "created_at": "2026-10-16T21:38:22.970Z",
+        "user_id": 1007,
+        "task_key": "set_pin",
+        "completed": 0,
+        "claimed": 0
+      },
+      {
+        "id": 11,
+        "created_at": "2026-10-16T21:38:23.328Z",
+        "user_id": 1007,
+        "task_key": "add_support",
+        "completed": 0,
+        "claimed": 0
+      },
+      {
+        "id": 12,
+        "created_at": "2026-10-16T21:38:23.617Z",
+        "user_id": 1007,
+        "task_key": "join_bot",
+        "completed": 0,
+        "claimed": 0
       }
     ],
     "messages": [
@@ -521,182 +605,6 @@
       "telegram_username": "@TpayX"
     },
     "products": [
-      {
-        "id": 8840,
-        "created_at": "2026-10-16T05:38:13.029Z",
-        "name": "Auto-418",
-        "amount": 418,
-        "income": 10.45,
-        "quota": 428.45,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8841,
-        "created_at": "2026-10-16T05:40:31.660Z",
-        "name": "Auto-151072",
-        "amount": 151072,
-        "income": 5287.52,
-        "quota": 156359.52,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "3.5%"
-      },
-      {
-        "id": 8842,
-        "created_at": "2026-10-16T05:40:32.229Z",
-        "name": "Auto-404",
-        "amount": 404,
-        "income": 10.1,
-        "quota": 414.1,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8843,
-        "created_at": "2026-10-16T05:40:32.846Z",
-        "name": "Auto-61631",
-        "amount": 61631,
-        "income": 2157.09,
-        "quota": 63788.09,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "3.5%"
-      },
-      {
-        "id": 8844,
-        "created_at": "2026-10-16T05:42:17.023Z",
-        "name": "Auto-127529",
-        "amount": 127529,
-        "income": 4463.52,
-        "quota": 131992.52,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "3.5%"
-      },
-      {
-        "id": 8845,
-        "created_at": "2026-10-16T05:42:18.090Z",
-        "name": "Auto-380",
-        "amount": 380,
-        "income": 9.5,
-        "quota": 389.5,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8846,
-        "created_at": "2026-10-16T05:44:12.679Z",
-        "name": "Auto-1689",
-        "amount": 1689,
-        "income": 42.23,
-        "quota": 1731.23,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8847,
-        "created_at": "2026-10-16T05:44:14.354Z",
-        "name": "Auto-4020",
-        "amount": 4020,
-        "income": 100.5,
-        "quota": 4120.5,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8848,
-        "created_at": "2026-10-16T05:44:15.066Z",
-        "name": "Auto-157678",
-        "amount": 157678,
-        "income": 5518.73,
-        "quota": 163196.73,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "3.5%"
-      },
-      {
-        "id": 8849,
-        "created_at": "2026-10-16T05:46:17.650Z",
-        "name": "Auto-411",
-        "amount": 411,
-        "income": 10.28,
-        "quota": 421.28,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8850,
-        "created_at": "2026-10-16T05:46:18.748Z",
-        "name": "Auto-128996",
-        "amount": 128996,
-        "income": 4514.86,
-        "quota": 133510.86,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "3.5%"
-      },
-      {
-        "id": 8851,
-        "created_at": "2026-10-16T05:48:12.261Z",
-        "name": "Auto-64890",
-        "amount": 64890,
-        "income": 2271.15,
-        "quota": 67161.15,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "3.5%"
-      },
-      {
-        "id": 8852,
-        "created_at": "2026-10-16T05:48:13.404Z",
-        "name": "Auto-362",
-        "amount": 362,
-        "income": 9.05,
-        "quota": 371.05,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8853,
-        "created_at": "2026-10-16T05:48:14.559Z",
-        "name": "Auto-422",
-        "amount": 422,
-        "income": 10.55,
-        "quota": 432.55,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8854,
-        "created_at": "2026-10-16T05:50:32.101Z",
-        "name": "Auto-3005",
-        "amount": 3005,
-        "income": 75.13,
-        "quota": 3080.13,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "2.5%"
-      },
-      {
-        "id": 8855,
-        "created_at": "2026-10-16T05:50:33.209Z",
-        "name": "Auto-137590",
-        "amount": 137590,
-        "income": 4815.65,
-        "quota": 142405.65,
-        "color": "blue",
-        "type": "Bank",
-        "percent": "3.5%"
-      },
       {
         "id": 8856,
         "created_at": "2026-10-16T05:50:34.305Z",
@@ -1070,6 +978,171 @@
         "color": "blue",
         "type": "Bank",
         "percent": "3.5%"
+      },
+      {
+        "id": 8890,
+        "created_at": "2026-10-16T21:28:16.649Z",
+        "name": "Auto-23244",
+        "amount": 23244,
+        "income": 813.54,
+        "quota": 24057.54,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8891,
+        "created_at": "2026-10-16T21:28:17.253Z",
+        "name": "Auto-90286",
+        "amount": 90286,
+        "income": 3160.01,
+        "quota": 93446.01,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8892,
+        "created_at": "2026-10-16T21:28:18.907Z",
+        "name": "Auto-174272",
+        "amount": 174272,
+        "income": 6099.52,
+        "quota": 180371.52,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8893,
+        "created_at": "2026-10-16T21:30:49.387Z",
+        "name": "Auto-785",
+        "amount": 785,
+        "income": 19.63,
+        "quota": 804.63,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "2.5%"
+      },
+      {
+        "id": 8894,
+        "created_at": "2026-10-16T21:30:50.606Z",
+        "name": "Auto-566",
+        "amount": 566,
+        "income": 14.15,
+        "quota": 580.15,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "2.5%"
+      },
+      {
+        "id": 8895,
+        "created_at": "2026-10-16T21:30:51.796Z",
+        "name": "Auto-1337",
+        "amount": 1337,
+        "income": 33.43,
+        "quota": 1370.43,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "2.5%"
+      },
+      {
+        "id": 8896,
+        "created_at": "2026-10-16T21:32:15.454Z",
+        "name": "Auto-9440",
+        "amount": 9440,
+        "income": 236,
+        "quota": 9676,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "2.5%"
+      },
+      {
+        "id": 8897,
+        "created_at": "2026-10-16T21:32:16.566Z",
+        "name": "Auto-477",
+        "amount": 477,
+        "income": 11.93,
+        "quota": 488.93,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "2.5%"
+      },
+      {
+        "id": 8898,
+        "created_at": "2026-10-16T21:32:17.686Z",
+        "name": "Auto-144143",
+        "amount": 144143,
+        "income": 5045.01,
+        "quota": 149188.01,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8899,
+        "created_at": "2026-10-16T21:34:16.366Z",
+        "name": "Auto-19390",
+        "amount": 19390,
+        "income": 678.65,
+        "quota": 20068.65,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8900,
+        "created_at": "2026-10-16T21:34:17.983Z",
+        "name": "Auto-78335",
+        "amount": 78335,
+        "income": 2741.73,
+        "quota": 81076.73,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8901,
+        "created_at": "2026-10-16T21:36:12.402Z",
+        "name": "Auto-184856",
+        "amount": 184856,
+        "income": 6469.96,
+        "quota": 191325.96,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8902,
+        "created_at": "2026-10-16T21:36:13.618Z",
+        "name": "Auto-196200",
+        "amount": 196200,
+        "income": 6867,
+        "quota": 203067,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8903,
+        "created_at": "2026-10-16T21:40:28.959Z",
+        "name": "Auto-167932",
+        "amount": 167932,
+        "income": 5877.62,
+        "quota": 173809.62,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "3.5%"
+      },
+      {
+        "id": 8904,
+        "created_at": "2026-10-16T21:40:29.706Z",
+        "name": "Auto-4774",
+        "amount": 4774,
+        "income": 119.35,
+        "quota": 4893.35,
+        "color": "blue",
+        "type": "Bank",
+        "percent": "2.5%"
       }
     ],
     "price_ranges": [
@@ -1158,6 +1231,14 @@
       "9337104423": {
         "otp": "473565",
         "expiresAt": 1792163172916
+      },
+      "8984260791": {
+        "otp": "683517",
+        "expiresAt": 1792159558947
+      },
+      "7790098808": {
+        "otp": "965836",
+        "expiresAt": 1792186220110
       }
     },
     "quotes": {
@@ -1194,17 +1275,85 @@
           "upi_id": "demo@ybl",
           "mobile": "8763527330"
         }
+      },
+      "gn2026101614281761B981": {
+        "amount": 1172,
+        "assetType": "INR",
+        "expectedIncome": 29.3,
+        "quota": 1201.3,
+        "receiverId": 1,
+        "withdrawalId": null,
+        "timerExpiry": "2026-10-16T14:43:17.687Z",
+        "receiverDetails": {
+          "receiver_name": "Tushar Sharma",
+          "bank_name": "HDFC Bank",
+          "account_number": "50100481729381",
+          "ifsc_code": "HDFC0000123",
+          "upi_id": "demo@ybl",
+          "mobile": "8763527330"
+        }
+      },
+      "gn20261016165011BCF0D2": {
+        "amount": 13875,
+        "assetType": "INR",
+        "expectedIncome": 346.88,
+        "quota": 14221.88,
+        "receiverId": 1,
+        "withdrawalId": null,
+        "timerExpiry": "2026-10-16T17:05:11.133Z",
+        "receiverDetails": {
+          "receiver_name": "Tushar Sharma",
+          "bank_name": "HDFC Bank",
+          "account_number": "50100481729381",
+          "ifsc_code": "HDFC0000123",
+          "upi_id": "demo@ybl",
+          "mobile": "8763527330"
+        }
+      },
+      "gn20261016165022D973A9": {
+        "amount": 13875,
+        "assetType": "INR",
+        "expectedIncome": 346.88,
+        "quota": 14221.88,
+        "receiverId": 1,
+        "withdrawalId": null,
+        "timerExpiry": "2026-10-16T17:05:22.863Z",
+        "receiverDetails": {
+          "receiver_name": "Tushar Sharma",
+          "bank_name": "HDFC Bank",
+          "account_number": "50100481729381",
+          "ifsc_code": "HDFC0000123",
+          "upi_id": "demo@ybl",
+          "mobile": "8763527330"
+        }
+      },
+      "gn202610161650546C7455": {
+        "amount": 570,
+        "assetType": "INR",
+        "expectedIncome": 14.25,
+        "quota": 584.25,
+        "receiverId": 1,
+        "withdrawalId": null,
+        "timerExpiry": "2026-10-16T17:05:54.680Z",
+        "receiverDetails": {
+          "receiver_name": "Tushar Sharma",
+          "bank_name": "HDFC Bank",
+          "account_number": "50100481729381",
+          "ifsc_code": "HDFC0000123",
+          "upi_id": "demo@ybl",
+          "mobile": "8763527330"
+        }
       }
     }
   },
   "idTrackers": {
-    "users": 1005,
+    "users": 1007,
     "orders": 10004,
     "bank_accounts": 6601,
     "transactions": 19,
-    "user_tasks": 6,
+    "user_tasks": 12,
     "messages": 2,
-    "products": 8889,
+    "products": 8904,
     "price_ranges": 6,
     "sliders": 7701,
     "withdrawals": 0,

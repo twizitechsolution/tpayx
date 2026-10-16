@@ -659,9 +659,30 @@ const Login = ({ setToken }) => {
 
 // Dashboard View
 const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
-  const [stats, setStats] = useState({ totalUsers: 0, totalVolume: 0, pendingOrders: 0, completedOrders: 0, canceledOrders: 0 });
-  const [orders, setOrders] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [stats, setStats] = useState(() => {
+    try {
+      const saved = localStorage.getItem('admin_cached_stats');
+      return saved ? JSON.parse(saved) : { totalUsers: 0, totalVolume: 0, pendingOrders: 0, completedOrders: 0, canceledOrders: 0 };
+    } catch (e) {
+      return { totalUsers: 0, totalVolume: 0, pendingOrders: 0, completedOrders: 0, canceledOrders: 0 };
+    }
+  });
+  const [orders, setOrders] = useState(() => {
+    try {
+      const saved = localStorage.getItem('admin_cached_orders');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [users, setUsers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('admin_cached_users');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
   const [loading, setLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [userSearch, setUserSearch] = useState('');
@@ -697,9 +718,18 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
       try {
         const overviewRes = await axios.get(`${API_BASE}/overview`, getAuthHeaders());
         if (overviewRes.data && overviewRes.data.success) {
-          if (overviewRes.data.stats) setStats(overviewRes.data.stats);
-          if (overviewRes.data.orders) setOrders(overviewRes.data.orders);
-          if (overviewRes.data.users) setUsers(overviewRes.data.users);
+          if (overviewRes.data.stats) {
+            setStats(overviewRes.data.stats);
+            try { localStorage.setItem('admin_cached_stats', JSON.stringify(overviewRes.data.stats)); } catch (e) {}
+          }
+          if (overviewRes.data.orders) {
+            setOrders(overviewRes.data.orders);
+            try { localStorage.setItem('admin_cached_orders', JSON.stringify(overviewRes.data.orders)); } catch (e) {}
+          }
+          if (overviewRes.data.users) {
+            setUsers(overviewRes.data.users);
+            try { localStorage.setItem('admin_cached_users', JSON.stringify(overviewRes.data.users)); } catch (e) {}
+          }
           return;
         }
       } catch (overviewErr) {
@@ -713,9 +743,18 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
         axios.get(`${API_BASE}/users`, getAuthHeaders()).catch(() => ({ data: { success: false } }))
       ]);
 
-      if (statsRes.data?.success && statsRes.data.stats) setStats(statsRes.data.stats);
-      if (ordersRes.data?.success && ordersRes.data.orders) setOrders(ordersRes.data.orders);
-      if (usersRes.data?.success && usersRes.data.users) setUsers(usersRes.data.users);
+      if (statsRes.data?.success && statsRes.data.stats) {
+        setStats(statsRes.data.stats);
+        try { localStorage.setItem('admin_cached_stats', JSON.stringify(statsRes.data.stats)); } catch (e) {}
+      }
+      if (ordersRes.data?.success && ordersRes.data.orders) {
+        setOrders(ordersRes.data.orders);
+        try { localStorage.setItem('admin_cached_orders', JSON.stringify(ordersRes.data.orders)); } catch (e) {}
+      }
+      if (usersRes.data?.success && usersRes.data.users) {
+        setUsers(usersRes.data.users);
+        try { localStorage.setItem('admin_cached_users', JSON.stringify(usersRes.data.users)); } catch (e) {}
+      }
     } catch (error) {
       console.error('Fetch error:', error);
       if (error.response?.status === 401 || error.response?.status === 403) {
@@ -728,7 +767,8 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
 
   useEffect(() => {
     if (token) {
-      fetchData();
+      const hasCached = (users.length > 0 || orders.length > 0 || stats.totalUsers > 0);
+      fetchData(hasCached);
     }
   }, [token]);
 

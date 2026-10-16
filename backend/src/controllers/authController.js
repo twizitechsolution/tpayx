@@ -60,6 +60,18 @@ async function storeOtp(mobile, otp) {
   }
 }
 
+async function safeDeleteSupabaseOtp(mobile) {
+  if (!supabase) return;
+  try {
+    await Promise.race([
+      supabase.from('settings').delete().eq('key', `otp_${mobile}`),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase OTP delete timeout')), 3000))
+    ]);
+  } catch (e) {
+    console.warn('[Supabase OTP Delete Warning]:', e.message);
+  }
+}
+
 async function verifyAndConsumeOtp(mobile, otp) {
   const cleanOtp = String(otp || '').trim();
   if (!cleanOtp) {
@@ -78,17 +90,13 @@ async function verifyAndConsumeOtp(mobile, otp) {
     if (Date.now() <= entry.expiresAt && (entry.otp === cleanOtp || cleanOtp === '123456')) {
       delete dbData.otps[mobile];
       saveDb();
-      if (supabase) {
-        supabase.from('settings').delete().eq('key', `otp_${mobile}`).catch(() => {});
-      }
+      await safeDeleteSupabaseOtp(mobile);
       return { valid: true };
     }
     if (Date.now() > entry.expiresAt) {
       delete dbData.otps[mobile];
       saveDb();
-      if (supabase) {
-        supabase.from('settings').delete().eq('key', `otp_${mobile}`).catch(() => {});
-      }
+      await safeDeleteSupabaseOtp(mobile);
       return { valid: false, error: 'OTP has expired. Please request a new OTP.' };
     }
   }
@@ -106,13 +114,13 @@ async function verifyAndConsumeOtp(mobile, otp) {
         if (parsed && parsed.otp) {
           if (Date.now() <= parsed.expiresAt && (String(parsed.otp).trim() === cleanOtp || cleanOtp === '123456')) {
             // Delete consumed OTP
-            supabase.from('settings').delete().eq('key', `otp_${mobile}`).catch(() => {});
             if (dbData.otps) delete dbData.otps[mobile];
             saveDb();
+            await safeDeleteSupabaseOtp(mobile);
             return { valid: true };
           }
           if (Date.now() > parsed.expiresAt) {
-            supabase.from('settings').delete().eq('key', `otp_${mobile}`).catch(() => {});
+            await safeDeleteSupabaseOtp(mobile);
             return { valid: false, error: 'OTP has expired. Please request a new OTP.' };
           }
           return { valid: false, error: 'Incorrect OTP entered. Please check the code and try again.' };
@@ -237,12 +245,9 @@ exports.signup = async (req, res) => {
     const userId = result.lastID;
 
     // Create user tasks defaults
-    await query.run(`
-      INSERT OR IGNORE INTO user_tasks (user_id, task_key, completed, claimed)
-      VALUES (?, 'set_pin', 0, 0),
-             (?, 'add_support', 0, 0),
-             (?, 'join_bot', 0, 0)
-    `, [userId, userId, userId]);
+    await query.run('INSERT OR IGNORE INTO user_tasks (user_id, task_key, completed, claimed) VALUES (?, ?, ?, ?)', [userId, 'set_pin', 0, 0]);
+    await query.run('INSERT OR IGNORE INTO user_tasks (user_id, task_key, completed, claimed) VALUES (?, ?, ?, ?)', [userId, 'add_support', 0, 0]);
+    await query.run('INSERT OR IGNORE INTO user_tasks (user_id, task_key, completed, claimed) VALUES (?, ?, ?, ?)', [userId, 'join_bot', 0, 0]);
 
     // Create JWT (10 years permanent token for mobile app session persistence)
     const token = jwt.sign({ id: userId, uid, mobile }, JWT_SECRET, { expiresIn: '3650d' });
@@ -262,25 +267,25 @@ exports.signup = async (req, res) => {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Signup error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 };
 
 exports.login = async (req, res) => {
-  const { mobile, password, otp } = req.body;
-
-  if (!mobile || !password || !otp) {
-    return res.status(400).json({ error: 'Please enter mobile number, password and OTP' });
-  }
-
-  // Verify OTP (allow 123456 fallback for test environment)
-  const otpRes = await verifyAndConsumeOtp(mobile, otp);
-  if (!otpRes.valid) {
-    return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
-  }
-
   try {
+    const { mobile, password, otp } = req.body;
+
+    if (!mobile || !password || !otp) {
+      return res.status(400).json({ error: 'Please enter mobile number, password and OTP' });
+    }
+
+    // Verify OTP (allow 123456 fallback for test environment)
+    const otpRes = await verifyAndConsumeOtp(mobile, otp);
+    if (!otpRes.valid) {
+      return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
+    }
+
     const user = await query.get('SELECT * FROM users WHERE mobile = ?', [mobile]);
     if (!user) {
       return res.status(400).json({ error: 'Account not found. Please sign up.' });
@@ -312,7 +317,7 @@ exports.login = async (req, res) => {
     });
 
   } catch (err) {
-    console.error(err);
+    console.error('Login error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 };
