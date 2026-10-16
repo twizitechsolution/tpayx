@@ -1,11 +1,16 @@
 const dns = require('dns');
 if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
+const path = require('path');
 const dotenv = require('dotenv');
-dotenv.config();
+try {
+  dotenv.config({ path: path.join(__dirname, '../.env') });
+  dotenv.config({ path: path.join(process.cwd(), '.env') });
+  dotenv.config();
+} catch (e) {}
 
 const express = require('express');
 const cors = require('cors');
-const { initDb, query, dbData, idTrackers, saveDb, saveDbAsync, getPendingSync, loadDb, syncDbFromSupabase, syncToSupabase, getBonusForAmount, getBonusSlabLabelForAmount } = require('./db');
+const { initDb, query, dbData, idTrackers, saveDb, saveDbAsync, getPendingSync, loadDb, syncDbFromSupabase, syncToSupabase, getBonusForAmount, getBonusSlabLabelForAmount, isSupabaseConnected, isHydratedStatus, getLocalVersion } = require('./db');
 
 // Controllers
 const authController = require('./controllers/authController');
@@ -98,7 +103,6 @@ app.use((req, res, next) => {
   next();
 });
 
-const path = require('path');
 const fs = require('fs');
 
 // Static serving for uploaded screenshots/files & static public assets
@@ -148,7 +152,15 @@ app.get('/', (req, res) => {
 });
 
 app.get('/api/health', (req, res) => {
-  return res.json({ success: true, status: 'OK', timestamp: new Date().toISOString() });
+  return res.json({
+    success: true,
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    supabaseConnected: isSupabaseConnected(),
+    isHydrated: isHydratedStatus(),
+    version: getLocalVersion(),
+    user1_bcoin: dbData.users.find(u => u.id === 1)?.bcoin_balance
+  });
 });
 
 // Dedicated Handler for Web Registration & Member Invite Links

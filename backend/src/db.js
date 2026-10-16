@@ -1,17 +1,26 @@
 const dns = require('dns');
 if (dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first');
-require('dotenv').config();
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
+// Load .env reliably whether running locally, in a subdirectory, or in Vercel serverless
+try {
+  require('dotenv').config({ path: path.join(__dirname, '../.env') });
+  require('dotenv').config({ path: path.join(process.cwd(), '.env') });
+  require('dotenv').config();
+} catch (e) {}
+
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vjfxbhvxndcxcxynzhzo.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqZnhiaHZ4bmRjeGN4eW56aHpvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODYzNTA5NSwiZXhwIjoyMTA0MjExMDk1fQ.YDvfCj4S3W3YxrOs5AWDmTP1s4QxSwOwRt9c-_fdYIc';
+
 let supabase = null;
-if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
+if (SUPABASE_URL && SUPABASE_KEY) {
   try {
     const { createClient } = require('@supabase/supabase-js');
     let ws;
     try { ws = require('ws'); } catch (e) {}
-    supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY, {
+    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
       auth: { persistSession: false },
       ...(ws ? { realtime: { transport: ws } } : {})
     });
@@ -1625,7 +1634,10 @@ module.exports = {
   syncToSupabase,
   saveBase64File,
   getBonusForAmount,
-  getBonusSlabLabelForAmount
+  getBonusSlabLabelForAmount,
+  isSupabaseConnected: () => !!supabase,
+  isHydratedStatus: () => isHydrated,
+  getLocalVersion: () => localStateVersion
 };
 
 
