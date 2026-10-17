@@ -5,7 +5,7 @@
         "id": 1,
         "uid": "ADMIN",
         "mobile": "8763527330",
-        "password_hash": "$2a$10$S3Js2mu4IQBwChbq/PJQleib45PKpuNJSYR45N1ywQvgjVgXC0iBq",
+        "password_hash": "$2a$10$Z7Ir3hJ9Rv7p/qkBOhUlhO3VEI6auFljS5hAzPSIIojp/k8ayuQtC",
         "pin": "1234",
         "ref_code": "admin_ref",
         "parent_id": 0,

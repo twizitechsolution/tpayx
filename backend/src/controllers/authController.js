@@ -363,16 +363,16 @@ exports.resetPassword = async (req, res) => {
   }
 
   try {
-    // Verify OTP (allow 123456 fallback for test environment)
-    const otpRes = verifyAndConsumeOtp(mobile, otp);
-    if (!otpRes.valid) {
-      return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
-    }
-
-    // Check if user exists
+    // Check if user exists first
     const user = await query.get('SELECT id FROM users WHERE mobile = ?', [mobile]);
     if (!user) {
       return res.status(400).json({ error: 'Account not found with this mobile number' });
+    }
+
+    // Verify OTP (allow 123456 fallback for test environment)
+    const otpRes = await verifyAndConsumeOtp(mobile, otp);
+    if (!otpRes.valid) {
+      return res.status(400).json({ error: otpRes.error || 'Invalid or expired OTP' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -380,7 +380,7 @@ exports.resetPassword = async (req, res) => {
 
     return res.json({ success: true, message: 'Password reset successfully! Please log in.' });
   } catch (err) {
-    console.error(err);
+    console.error('Password reset error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 };
