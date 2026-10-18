@@ -161,35 +161,43 @@ exports.sendOtp = async (req, res) => {
   const otp = String(Math.floor(100000 + Math.random() * 900000));
   await storeOtp(mobile, otp);
 
-  // Synchronously await Real SMS Gateway dispatch so Vercel Serverless environment does NOT freeze process before sending!
-  try {
-    const formattedMessage = `Your Aftertrade OTP is ${otp}. Valid 5 min. Do not share. -AfterTrade`;
-    const params = new URLSearchParams();
-    params.append('username', 'Twizitech');
-    params.append('apikey', 'e1f62636-1fc6-4c6c-8693-5995873a9180');
-    params.append('sendername', 'AFTTRD');
-    params.append('smstype', 'TRANS');
-    params.append('numbers', mobile);
-    params.append('message', formattedMessage);
+  // Trigger SMS Gateway dispatch with non-blocking resilience
+  const dispatchSms = async () => {
+    try {
+      const formattedMessage = `Your Aftertrade OTP is ${otp}. Valid 5 min. Do not share. -AfterTrade`;
+      const params = new URLSearchParams();
+      params.append('username', 'Twizitech');
+      params.append('apikey', 'e1f62636-1fc6-4c6c-8693-5995873a9180');
+      params.append('sendername', 'AFTTRD');
+      params.append('smstype', 'TRANS');
+      params.append('numbers', mobile);
+      params.append('message', formattedMessage);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-    const smsResponse = await fetch('http://sms.hspsms.com/v2/sendSMS', {
-      method: 'POST',
-      body: params,
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+      const smsResponse = await fetch('http://sms.hspsms.com/v2/sendSMS', {
+        method: 'POST',
+        body: params,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
 
-    const responseText = await smsResponse.text();
-    console.log(`[SMS Gateway] Sent OTP ${otp} to ${mobile}. Response:`, responseText);
-  } catch (err) {
-    console.error('[SMS Gateway] Error sending OTP SMS:', err.message);
-  }
+      const responseText = await smsResponse.text();
+      console.log(`[SMS Gateway] Sent OTP ${otp} to ${mobile}. Response:`, responseText);
+    } catch (err) {
+      console.error('[SMS Gateway] Error sending OTP SMS:', err.message);
+    }
+  };
+
+  // Wait maximum 1.5 seconds for SMS dispatch, but respond immediately so client does not time out
+  await Promise.race([
+    dispatchSms(),
+    new Promise(resolve => setTimeout(resolve, 1500))
+  ]);
 
   // Return success response without leaking OTP
   return res.json({ 
