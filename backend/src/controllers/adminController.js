@@ -18,7 +18,7 @@ exports.adminLogin = async (req, res) => {
     const token = jwt.sign(
       { username, role: 'admin' },
       process.env.JWT_SECRET || 'TpayX_secret_jwt_key',
-      { expiresIn: '24h' }
+      { expiresIn: '7d' }
     );
     return res.status(200).json({
       success: true,

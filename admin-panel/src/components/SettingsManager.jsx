@@ -1,24 +1,79 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 
-const SettingsManager = ({ token, theme }) => {
-  const [level1, setLevel1] = useState(10);
-  const [level2, setLevel2] = useState(5);
-  const [level3, setLevel3] = useState(2);
-  const [minPlanAmount, setMinPlanAmount] = useState(200);
-  const [maxPlanAmount, setMaxPlanAmount] = useState(100000);
-  const [telegramLink, setTelegramLink] = useState('https://t.me/TpayX');
-  const [winpeyApiKey, setWinpeyApiKey] = useState('488b923c-2b03-465e-b9df-55d018124e0c');
-  const [winpeyApiSecret, setWinpeyApiSecret] = useState('fc4a56a2439f47c19213c747ee5693c6');
-  const [paymentMode, setPaymentMode] = useState('gateway');
-  const [upiIds, setUpiIds] = useState('');
-  const [loading, setLoading] = useState(true);
+const SettingsManager = ({ token, theme, handleLogout }) => {
+  const [level1, setLevel1] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.level1_commission ?? 10;
+    } catch { return 10; }
+  });
+  const [level2, setLevel2] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.level2_commission ?? 5;
+    } catch { return 5; }
+  });
+  const [level3, setLevel3] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.level3_commission ?? 2;
+    } catch { return 2; }
+  });
+  const [minPlanAmount, setMinPlanAmount] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.min_plan_amount ?? 200;
+    } catch { return 200; }
+  });
+  const [maxPlanAmount, setMaxPlanAmount] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.max_plan_amount ?? 100000;
+    } catch { return 100000; }
+  });
+  const [telegramLink, setTelegramLink] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.telegram_link || 'https://t.me/TpayX';
+    } catch { return 'https://t.me/TpayX'; }
+  });
+  const [winpeyApiKey, setWinpeyApiKey] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.winpey_api_key || '488b923c-2b03-465e-b9df-55d018124e0c';
+    } catch { return '488b923c-2b03-465e-b9df-55d018124e0c'; }
+  });
+  const [winpeyApiSecret, setWinpeyApiSecret] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.winpey_api_secret || 'fc4a56a2439f47c19213c747ee5693c6';
+    } catch { return 'fc4a56a2439f47c19213c747ee5693c6'; }
+  });
+  const [paymentMode, setPaymentMode] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.payment_mode || 'gateway';
+    } catch { return 'gateway'; }
+  });
+  const [upiIds, setUpiIds] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_settings'));
+      return s?.upi_ids ? s.upi_ids.split(',').join('\n') : '';
+    } catch { return ''; }
+  });
+  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
   // Commission Slabs State
-  const [slabs, setSlabs] = useState([]);
+  const [slabs, setSlabs] = useState(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem('admin_cached_slabs'));
+      return Array.isArray(s) && s.length > 0 ? s : [];
+    } catch { return []; }
+  });
   const [slabLoading, setSlabLoading] = useState(false);
   const [slabMsg, setSlabMsg] = useState('');
   const [slabErr, setSlabErr] = useState('');
@@ -54,13 +109,18 @@ const SettingsManager = ({ token, theme }) => {
   const API_BASE = import.meta.env.VITE_API_URL || '/api';
   const API_ADMIN_BASE = `${API_BASE}/admin`;
 
-  const getHeaders = () => ({ headers: { Authorization: `Bearer ${token}` } });
+  const getHeaders = () => {
+    const activeToken = token || localStorage.getItem('adminToken');
+    return { headers: { Authorization: `Bearer ${activeToken}` } };
+  };
 
   const fetchSettings = async () => {
+    setError('');
     try {
       const res = await axios.get(`${API_ADMIN_BASE}/settings`, getHeaders());
       if (res.data.success && res.data.settings) {
         const s = res.data.settings;
+        try { localStorage.setItem('admin_cached_settings', JSON.stringify(s)); } catch {}
         setLevel1(s.level1_commission);
         setLevel2(s.level2_commission);
         setLevel3(s.level3_commission);
@@ -72,8 +132,17 @@ const SettingsManager = ({ token, theme }) => {
         setPaymentMode(s.payment_mode || 'gateway');
         setUpiIds(s.upi_ids ? s.upi_ids.split(',').join('\n') : '');
       }
-    } catch { setError('Failed to load settings.'); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        setError('Session expired or unauthorized. Please re-login.');
+        if (typeof handleLogout === 'function') handleLogout();
+      } else {
+        setError(err.response?.data?.error || err.message || 'Failed to load settings.');
+      }
+    } finally {
+      setLoading(false);
+    }
 
     try {
       const rRes = await axios.get(`${API_ADMIN_BASE}/rotation-config`, getHeaders());
@@ -89,13 +158,21 @@ const SettingsManager = ({ token, theme }) => {
 
   const fetchSlabs = async () => {
     setSlabLoading(true);
+    setSlabErr('');
     try {
       const res = await axios.get(`${API_ADMIN_BASE}/commission-slabs`, getHeaders());
-      if (res.data.success) {
+      if (res.data.success && res.data.slabs) {
         setSlabs(res.data.slabs || []);
+        try { localStorage.setItem('admin_cached_slabs', JSON.stringify(res.data.slabs)); } catch {}
       }
     } catch (e) {
       console.error('Failed to load commission slabs:', e);
+      if (e.response?.status === 401 || e.response?.status === 403) {
+        setSlabErr('Session expired. Please re-login.');
+        if (typeof handleLogout === 'function') handleLogout();
+      } else {
+        setSlabErr(e.response?.data?.error || e.message || 'Failed to load bonus slabs.');
+      }
     } finally {
       setSlabLoading(false);
     }
@@ -104,7 +181,7 @@ const SettingsManager = ({ token, theme }) => {
   useEffect(() => {
     fetchSettings();
     fetchSlabs();
-  }, []);
+  }, [token]);
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -402,7 +479,21 @@ const SettingsManager = ({ token, theme }) => {
           </div>
         ) : (
           <form onSubmit={handleSave} className="space-y-6">
-            {error && <div className="bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl p-4 text-xs font-bold uppercase tracking-wide"><i className="fas fa-exclamation-triangle mr-2" />{error}</div>}
+            {error && (
+              <div className="bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl p-4 text-xs font-bold uppercase tracking-wide flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <i className="fas fa-exclamation-triangle mr-1 shrink-0" />
+                  <span>{error}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setLoading(true); fetchSettings(); fetchSlabs(); }}
+                  className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-xl text-[10px] uppercase font-bold active:scale-95 transition-all shrink-0 flex items-center gap-1"
+                >
+                  <i className="fas fa-redo text-[9px]" /> Retry
+                </button>
+              </div>
+            )}
             {success && <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 rounded-2xl p-4 text-xs font-bold uppercase tracking-wide"><i className="fas fa-check-circle mr-2" />{success}</div>}
 
             {/* Plan Display Range Limits (Min & Max Plan Amount) */}

@@ -2043,27 +2043,27 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
 
       {/* Reports, Sliders, Products, and Messages manager renders */}
       {!loading && activeTab === 'reports' && (
-        <ReportsManager token={token} theme={theme} />
+        <ReportsManager token={token} handleLogout={handleLogout} theme={theme} />
       )}
 
       {!loading && activeTab === 'sliders' && (
-        <SliderManager token={token} theme={theme} />
+        <SliderManager token={token} handleLogout={handleLogout} theme={theme} />
       )}
 
       {!loading && activeTab === 'products' && (
-        <ProductManager token={token} theme={theme} />
+        <ProductManager token={token} handleLogout={handleLogout} theme={theme} />
       )}
 
       {!loading && activeTab === 'messages' && (
-        <MessageManager token={token} theme={theme} />
+        <MessageManager token={token} handleLogout={handleLogout} theme={theme} />
       )}
 
       {!loading && activeTab === 'settings' && (
-        <SettingsManager token={token} theme={theme} />
+        <SettingsManager token={token} handleLogout={handleLogout} theme={theme} />
       )}
 
       {!loading && activeTab === 'disputes' && (
-        <DisputeManager token={token} theme={theme} />
+        <DisputeManager token={token} handleLogout={handleLogout} theme={theme} />
       )}
     </div>
   );
@@ -2078,6 +2078,20 @@ const AppContent = () => {
     localStorage.removeItem('adminToken');
     setToken(null);
   };
+
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          console.warn('Admin token expired or invalid (401/403). Redirecting to login.');
+          handleLogout();
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, []);
 
   return (
     <Routes>
