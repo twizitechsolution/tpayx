@@ -2,30 +2,32 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>TpayX - Fast. Secure. Simple.</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
-    * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
-    body {
+    * { 
+      font-family: 'Inter', sans-serif; 
+      -webkit-tap-highlight-color: transparent; 
+      box-sizing: border-box;
+    }
+    html, body {
       background-color: #f1f5f9;
       margin: 0;
       padding: 0;
+      width: 100%;
       min-height: 100vh;
       min-height: 100dvh;
       overflow-x: hidden;
     }
-    .view-container {
-      display: none;
+    .page-view {
       width: 100%;
+      max-width: 440px;
+      margin: 0 auto;
       min-height: 100vh;
       min-height: 100dvh;
-    }
-    .view-container.active {
-      display: flex;
-      flex-direction: column;
     }
     @keyframes scaleUp {
       from { transform: scale(0.92); opacity: 0; }
@@ -43,10 +45,10 @@
     }
   </style>
 </head>
-<body class="flex justify-center items-start text-slate-800">
+<body class="bg-slate-100 text-slate-800 antialiased">
 
   <!-- ==================== VIEW 1: LANDING PAGE ==================== -->
-  <div id="view-landing" class="view-container active w-full max-w-md mx-auto min-h-screen bg-[#f8fafc] shadow-2xl relative border-x border-slate-200/50 pb-28">
+  <div id="view-landing" class="page-view flex flex-col justify-between bg-[#f8fafc] shadow-2xl relative border-x border-slate-200/50 pb-28" style="display: flex;">
     <div class="p-4 space-y-4">
       
       <!-- Top Hero Card (Gradient) -->
@@ -170,7 +172,7 @@
     </div>
 
     <!-- Sticky Bottom Bar -->
-    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white/95 backdrop-blur-md border-t border-slate-200 z-30 flex justify-center max-w-md mx-auto">
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white/95 backdrop-blur-md border-t border-slate-200 z-30 flex justify-center max-w-[440px] mx-auto">
       <button onclick="openSignup()" class="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-blue-500/25 active:scale-[0.98] transition-all uppercase tracking-wider flex items-center justify-center gap-2">
         <span>START EARNING NOW</span>
         <i class="fas fa-arrow-right text-xs"></i>
@@ -180,11 +182,11 @@
 
 
   <!-- ==================== VIEW 2: SIGN UP PAGE ==================== -->
-  <div id="view-signup" class="view-container w-full max-w-md mx-auto min-h-screen bg-white p-5 pb-8 flex flex-col justify-between relative shadow-2xl border-x border-slate-200/50">
+  <div id="view-signup" class="page-view flex flex-col justify-between bg-white p-5 pb-8 relative shadow-2xl border-x border-slate-200/50" style="display: none;">
     <div>
       <!-- Top Bar with Back Arrow -->
       <div class="flex items-center gap-3 pt-3 pb-5 border-b border-slate-100 mb-5">
-        <button onclick="openLanding()" class="w-10 h-10 rounded-xl hover:bg-slate-100 active:scale-95 flex items-center justify-center text-slate-700 transition-all">
+        <button type="button" onclick="openLanding()" class="w-10 h-10 rounded-xl hover:bg-slate-100 active:scale-95 flex items-center justify-center text-slate-700 transition-all">
           <i class="fas fa-arrow-left text-lg"></i>
         </button>
         <div>
@@ -290,29 +292,29 @@
   <script>
     // Extract referral code from URL parameters
     const urlParams = new URLSearchParams(window.location.search);
-    const inviteParam = urlParams.get('vcode') || urlParams.get('ref') || 'tp3340vnxr';
+    const inviteParam = urlParams.get('vcode') || urlParams.get('ref') || 'tp779009';
     
     document.getElementById('input-invitation').value = inviteParam;
 
-    // View Navigation
+    // View Navigation with strict inline display styles
     function openLanding() {
-      document.getElementById('view-landing').classList.add('active');
-      document.getElementById('view-signup').classList.remove('active');
+      const vLanding = document.getElementById('view-landing');
+      const vSignup = document.getElementById('view-signup');
+      vLanding.style.display = 'flex';
+      vSignup.style.display = 'none';
       window.scrollTo(0, 0);
     }
 
     function openSignup() {
-      document.getElementById('view-landing').classList.remove('active');
-      document.getElementById('view-signup').classList.add('active');
+      const vLanding = document.getElementById('view-landing');
+      const vSignup = document.getElementById('view-signup');
+      vLanding.style.display = 'none';
+      vSignup.style.display = 'flex';
       window.scrollTo(0, 0);
     }
 
-    // Auto-route based on path
-    if (window.location.pathname.includes('/signup')) {
-      openSignup();
-    } else {
-      openLanding();
-    }
+    // Always start with Landing Page (even if on /memberInvite or /)
+    openLanding();
 
     // Toast helper
     let toastTimeout;
