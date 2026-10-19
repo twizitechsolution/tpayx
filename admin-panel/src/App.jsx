@@ -11,6 +11,66 @@ import ReportsManager from './components/ReportsManager';
 const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
 const API_BASE = rawApiUrl.endsWith('/api') ? `${rawApiUrl}/admin` : `${rawApiUrl}/api/admin`;
 
+// Robust Error Boundary to guarantee no blank/white screens occur
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Admin Panel Uncaught Error:', error, errorInfo);
+  }
+
+  handleReset = () => {
+    try {
+      localStorage.removeItem('admin_cached_stats');
+      localStorage.removeItem('admin_cached_orders');
+      localStorage.removeItem('admin_cached_users');
+    } catch (e) {}
+    this.setState({ hasError: false, error: null });
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-[#0d0d1a] text-white flex flex-col items-center justify-center p-6 text-center select-none font-sans">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-500 text-2xl mb-4">
+            <i className="fas fa-exclamation-triangle" />
+          </div>
+          <h2 className="text-xl font-black uppercase tracking-wider text-rose-400">Rendering Issue Detected</h2>
+          <p className="text-xs text-slate-400 max-w-md mt-2 font-mono">
+            {this.state.error?.message || 'An unexpected rendering error occurred in this view.'}
+          </p>
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={this.handleReset}
+              className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-violet-500/20 active:scale-95 transition-all"
+            >
+              Clear Cache & Reload
+            </button>
+            <button
+              onClick={() => {
+                localStorage.removeItem('adminToken');
+                window.location.href = '/login';
+              }}
+              className="px-5 py-2.5 rounded-xl bg-[#181931] border border-[#1b1c34] text-slate-300 hover:text-white font-bold text-xs uppercase tracking-wider active:scale-95 transition-all"
+            >
+              Logout to Login
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // Live 15-Minute Countdown Timer Component for Deposit Orders Queue
 const OrderTimer = ({ createdAt, timerExpiry, status }) => {
   const [timeLeft, setTimeLeft] = useState('');
@@ -576,7 +636,9 @@ const ProtectedLayout = ({ children, token, handleLogout, theme, setTheme }) => 
 
         {/* Dynamic page render */}
         <main className="flex-1 overflow-y-auto p-4 md:p-8 scroll-panel">
-          {React.cloneElement(children, { activeTab, theme })}
+          <ErrorBoundary>
+            {React.cloneElement(children, { activeTab, theme })}
+          </ErrorBoundary>
         </main>
       </div>
     </div>
@@ -942,27 +1004,35 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
     }
   };
 
-  // Filter users by search
-  const filteredUsers = users.filter(u => 
-    u.uid.toLowerCase().includes(userSearch.toLowerCase()) || 
-    (u.username && u.username.toLowerCase().includes(userSearch.toLowerCase())) ||
-    u.mobile.includes(userSearch)
-  );
+  // Filter users by search safely
+  const filteredUsers = (users || []).filter(u => {
+    if (!u) return false;
+    const q = (userSearch || '').toLowerCase();
+    const uid = String(u.uid || '').toLowerCase();
+    const username = String(u.username || '').toLowerCase();
+    const mobile = String(u.mobile || '');
+    return uid.includes(q) || username.includes(q) || mobile.includes(q);
+  });
 
-  // SVG Trend graph coordinates calculations
-  const chartData = stats.chartData || [];
-  const maxVal = Math.max(...chartData.map(d => Math.max(d.deposits, d.withdrawals)), 1000);
+  // SVG Trend graph coordinates calculations safely
+  const chartData = Array.isArray(stats?.chartData) ? stats.chartData : [];
+  const maxVal = Math.max(
+    ...chartData.map(d => Math.max(Number(d?.deposits) || 0, Number(d?.withdrawals) || 0)),
+    1000
+  );
   
   const pointsDeposits = chartData.map((d, index) => {
-    const x = (index * (380 / 6)) + 40;
-    const y = 160 - (d.deposits / maxVal) * 120;
-    return `${x},${y}`;
+    const x = (index * (380 / Math.max(chartData.length - 1, 1))) + 40;
+    const dep = Number(d?.deposits) || 0;
+    const y = 160 - (dep / (maxVal || 1000)) * 120;
+    return `${x},${isNaN(y) ? 160 : y}`;
   }).join(' ');
 
   const pointsWithdrawals = chartData.map((d, index) => {
-    const x = (index * (380 / 6)) + 40;
-    const y = 160 - (d.withdrawals / maxVal) * 120;
-    return `${x},${y}`;
+    const x = (index * (380 / Math.max(chartData.length - 1, 1))) + 40;
+    const w = Number(d?.withdrawals) || 0;
+    const y = 160 - (w / (maxVal || 1000)) * 120;
+    return `${x},${isNaN(y) ? 160 : y}`;
   }).join(' ');
 
   // Create standard class names
@@ -2156,7 +2226,9 @@ const AppContent = () => {
 const App = () => {
   return (
     <Router>
-      <AppContent />
+      <ErrorBoundary>
+        <AppContent />
+      </ErrorBoundary>
     </Router>
   );
 };
