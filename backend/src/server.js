@@ -146,9 +146,27 @@ app.get(['/uploads/TpayX.apk', '/uploads/Airwallex.apk', '/TpayX.apk', '/Airwall
   return res.status(404).json({ success: false, error: 'TpayX APK file not found on server' });
 });
 
-// Root Health Check Routes for Vercel
-app.get('/', (req, res) => {
+// Helper to serve Web Landing & Registration Page
+const sendLandingPage = (req, res) => {
+  const staticPublicInv = path.join(staticPublicDir, 'invapp.html');
+  const rootInv = path.join(__dirname, '../../invapp.html');
+  const invPath = fs.existsSync(staticPublicInv) ? staticPublicInv :
+                  fs.existsSync(rootInv) ? rootInv : null;
+
+  if (invPath) {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.sendFile(invPath);
+  }
   return res.json({ success: true, message: 'TpayX Backend API Serverless is Running!', status: 'OK' });
+};
+
+// Root Route: Serve Landing Page to browser visitors, JSON to automated API checks
+app.get('/', (req, res) => {
+  const accept = req.headers['accept'] || '';
+  if (accept.includes('application/json') && !accept.includes('text/html')) {
+    return res.json({ success: true, message: 'TpayX Backend API Serverless is Running!', status: 'OK' });
+  }
+  return sendLandingPage(req, res);
 });
 
 app.get('/api/health', (req, res) => {
@@ -164,17 +182,14 @@ app.get('/api/health', (req, res) => {
 });
 
 // Dedicated Handler for Web Registration & Member Invite Links
-app.use((req, res, next) => {
-  if (req.url.includes('memberInvite') || req.path.includes('memberInvite')) {
-    const staticPublicInv = path.join(staticPublicDir, 'invapp.html');
-    const rootInv = path.join(__dirname, '../../invapp.html');
-    const invPath = fs.existsSync(staticPublicInv) ? staticPublicInv :
-                    fs.existsSync(rootInv) ? rootInv : null;
+app.get(['/memberInvite', '/signup', '/register', '/landing'], (req, res) => {
+  return sendLandingPage(req, res);
+});
 
-    if (invPath) {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.sendFile(invPath);
-    }
+app.use((req, res, next) => {
+  if (req.url.includes('memberInvite') || req.path.includes('memberInvite') ||
+      req.path === '/signup' || req.path === '/register') {
+    return sendLandingPage(req, res);
   }
   next();
 });

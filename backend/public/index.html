@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>TpayX - Fast. Secure. Simple.</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: #f1f5f9;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow-x: hidden;
+    }
+    .view-container {
+      display: none;
+      width: 100%;
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+    .view-container.active {
+      display: flex;
+      flex-direction: column;
+    }
+    @keyframes scaleUp {
+      from { transform: scale(0.92); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .animate-scale-up {
+      animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes fadeInDown {
+      from { transform: translateY(-16px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .animate-toast {
+      animation: fadeInDown 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+  </style>
+</head>
+<body class="flex justify-center items-start text-slate-800">
+
+  <!-- ==================== VIEW 1: LANDING PAGE ==================== -->
+  <div id="view-landing" class="view-container active w-full max-w-md mx-auto min-h-screen bg-[#f8fafc] shadow-2xl relative border-x border-slate-200/50 pb-28">
+    <div class="p-4 space-y-4">
+      
+      <!-- Top Hero Card (Gradient) -->
+      <div class="bg-gradient-to-br from-indigo-950 via-blue-950 to-slate-900 rounded-3xl p-6 text-white relative overflow-hidden shadow-xl border border-indigo-900/60">
+        <div class="absolute -right-6 -top-6 w-32 h-32 rounded-full bg-amber-400/20 blur-xl pointer-events-none"></div>
+        <div class="absolute -left-6 -bottom-6 w-32 h-32 rounded-full bg-blue-500/20 blur-xl pointer-events-none"></div>
+        
+        <div class="relative z-10 flex flex-col justify-between h-full space-y-3">
+          <!-- Brand & Referral Badge -->
+          <div class="flex justify-between items-center">
+            <span class="text-2xl font-black tracking-tight text-white flex items-center gap-1.5">
+              TpayX
+            </span>
+            <span class="bg-amber-400/20 text-amber-300 font-extrabold text-[10px] px-2.5 py-1 rounded-full border border-amber-400/30 uppercase tracking-widest">
+              REFERRAL
+            </span>
+          </div>
+
+          <!-- Headline -->
+          <div class="mt-2">
+            <h1 class="text-xl font-black text-white leading-tight">
+              Just a mobile phone —<br>start <span class="text-amber-400">earning today!</span>
+            </h1>
+            <p class="text-xs text-slate-300 font-medium mt-2 leading-relaxed">
+              Make money anytime, anywhere with TpayX daily investment rewards.
+            </p>
+          </div>
+
+          <!-- Instant Bonus Pill -->
+          <div class="pt-2 flex items-center gap-2">
+            <div class="w-7 h-7 rounded-full bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-400 text-xs font-bold shrink-0">
+              ₹
+            </div>
+            <span class="text-xs text-amber-300 font-bold">
+              Instant 10%+8 & USDT Bonuses
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 Steps Card -->
+      <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-3">
+        <div class="text-center">
+          <h2 class="text-sm font-black text-slate-900 tracking-tight">
+            Just <span class="text-blue-600 underline decoration-blue-500 decoration-2 underline-offset-4">3 Steps</span> to Start Earning:
+          </h2>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 pt-2 text-center">
+          <!-- Step 1 -->
+          <div class="flex flex-col items-center space-y-2">
+            <div class="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-sm">
+              <i class="fas fa-user-plus text-xl"></i>
+            </div>
+            <span class="text-[10px] font-extrabold text-indigo-600 uppercase tracking-wider">STEP 1</span>
+            <span class="text-xs font-bold text-slate-800">Registration</span>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="flex flex-col items-center space-y-2">
+            <div class="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shadow-sm">
+              <i class="fas fa-download text-xl"></i>
+            </div>
+            <span class="text-[10px] font-extrabold text-emerald-600 uppercase tracking-wider">STEP 2</span>
+            <span class="text-xs font-bold text-slate-800">Download App</span>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="flex flex-col items-center space-y-2">
+            <div class="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 shadow-sm">
+              <i class="fas fa-coins text-xl"></i>
+            </div>
+            <span class="text-[10px] font-extrabold text-amber-600 uppercase tracking-wider">STEP 3</span>
+            <span class="text-xs font-bold text-slate-800">Start Earning</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Welcome / Feature Cards -->
+      <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 space-y-3">
+        <div class="text-center pb-1">
+          <span class="text-xs font-black text-slate-400 uppercase tracking-widest">
+            // WELCOME TO <span class="text-blue-600">TPAYX!</span> //
+          </span>
+        </div>
+
+        <!-- Steady? -->
+        <div class="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 flex items-center gap-3.5">
+          <div class="w-10 h-10 rounded-xl bg-purple-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <i class="fas fa-rocket text-sm"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-black text-purple-900">Steady?</h4>
+            <p class="text-[11px] text-purple-700/80 font-medium">Small trades for daily profit.</p>
+          </div>
+        </div>
+
+        <!-- Adventurous? -->
+        <div class="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 flex items-center gap-3.5">
+          <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <i class="fas fa-chart-line text-sm"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-black text-emerald-900">Adventurous?</h4>
+            <p class="text-[11px] text-emerald-700/80 font-medium">USDT trading for high returns.</p>
+          </div>
+        </div>
+
+        <!-- Profit strategy -->
+        <div class="p-3.5 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100 flex items-center gap-3.5">
+          <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+            <i class="fas fa-shield-alt text-sm"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-black text-amber-900">Find your profit strategy.</h4>
+            <p class="text-[11px] text-amber-700/80 font-medium">Real-time, safe, efficient.</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Sticky Bottom Bar -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-white/95 backdrop-blur-md border-t border-slate-200 z-30 flex justify-center max-w-md mx-auto">
+      <button onclick="openSignup()" class="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-blue-500/25 active:scale-[0.98] transition-all uppercase tracking-wider flex items-center justify-center gap-2">
+        <span>START EARNING NOW</span>
+        <i class="fas fa-arrow-right text-xs"></i>
+      </button>
+    </div>
+  </div>
+
+
+  <!-- ==================== VIEW 2: SIGN UP PAGE ==================== -->
+  <div id="view-signup" class="view-container w-full max-w-md mx-auto min-h-screen bg-white p-5 pb-8 flex flex-col justify-between relative shadow-2xl border-x border-slate-200/50">
+    <div>
+      <!-- Top Bar with Back Arrow -->
+      <div class="flex items-center gap-3 pt-3 pb-5 border-b border-slate-100 mb-5">
+        <button onclick="openLanding()" class="w-10 h-10 rounded-xl hover:bg-slate-100 active:scale-95 flex items-center justify-center text-slate-700 transition-all">
+          <i class="fas fa-arrow-left text-lg"></i>
+        </button>
+        <div>
+          <h1 class="text-2xl font-black text-slate-900">Sign Up Free</h1>
+          <p class="text-xs text-slate-500 font-medium mt-0.5">Create a new account</p>
+        </div>
+      </div>
+
+      <!-- Sign Up Form -->
+      <form id="signup-form" onsubmit="event.preventDefault(); submitSignup();" class="space-y-4">
+        
+        <!-- Mobile Number -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1.5">Mobile Number</label>
+          <div class="flex gap-2">
+            <div class="bg-slate-100 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-800 font-bold text-sm flex items-center justify-center shrink-0 shadow-sm">
+              +91
+            </div>
+            <input id="input-mobile" type="tel" maxlength="10" placeholder="Type 10-digit number" class="flex-1 bg-slate-100/70 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-900 font-semibold text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm">
+          </div>
+        </div>
+
+        <!-- Password -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1.5">Password</label>
+          <input id="input-password" type="password" placeholder="Enter password" class="w-full bg-slate-100/70 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-900 font-semibold text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm">
+        </div>
+
+        <!-- Confirm Password -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1.5">Confirm Password</label>
+          <input id="input-confirm" type="password" placeholder="Re-enter password" class="w-full bg-slate-100/70 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-900 font-semibold text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm">
+        </div>
+
+        <!-- Invitation Code -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1.5">Invitation Code</label>
+          <input id="input-invitation" type="text" placeholder="Invitation code" class="w-full bg-slate-100/70 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-900 font-bold text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm">
+        </div>
+
+        <!-- OTP Input & Send OTP Button -->
+        <div>
+          <label class="block text-xs font-bold text-slate-600 mb-1.5">OTP</label>
+          <div class="flex gap-2">
+            <input id="input-otp" type="text" maxlength="6" placeholder="Enter 6-digit OTP" class="flex-1 bg-slate-100/70 border border-slate-200 rounded-2xl px-4 py-3.5 text-slate-900 font-semibold text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all shadow-sm">
+            <button id="btn-otp" type="button" onclick="sendOtp()" class="bg-blue-50 border border-blue-200 text-blue-600 font-bold px-5 py-3.5 rounded-2xl text-xs whitespace-nowrap active:bg-blue-100 transition-colors shadow-sm disabled:opacity-50">
+              Send OTP
+            </button>
+          </div>
+        </div>
+
+        <!-- Create Account Button -->
+        <div class="pt-3">
+          <button id="btn-signup" type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl text-base shadow-xl shadow-blue-500/25 active:scale-[0.98] transition-all tracking-wide flex items-center justify-center gap-2">
+            <span>Create Account</span>
+          </button>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+
+  <!-- ==================== SUCCESS MODAL ==================== -->
+  <div id="modal-success" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" style="display: none;">
+    <div class="w-full max-w-sm bg-white rounded-3xl p-6 text-center shadow-2xl border border-slate-100 animate-scale-up space-y-4">
+      <!-- Animated Checkmark -->
+      <div class="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-3xl mx-auto shadow-inner">
+        <i class="fas fa-check"></i>
+      </div>
+
+      <div>
+        <h3 class="text-xl font-black text-slate-900">Account Created! 🎉</h3>
+        <p class="text-xs text-slate-600 font-medium leading-relaxed mt-2">
+          Your TpayX account is now active! To start daily trading, claim your sign-up bonuses, and manage your wallet, please download our official Android application.
+        </p>
+      </div>
+
+      <!-- Download APK Button -->
+      <div class="pt-2 space-y-2">
+        <a id="download-apk-link" href="/TpayX.apk" download="TpayX.apk" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-2xl text-sm shadow-xl shadow-blue-500/30 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 uppercase tracking-wider block text-center">
+          <i class="fab fa-android text-lg"></i>
+          <span>Download TpayX App (APK)</span>
+        </a>
+        <a href="/TpayX.apk" download="TpayX.apk" class="text-xs text-slate-400 font-semibold hover:text-blue-600 transition-colors block text-center">
+          Tap here if download does not start automatically
+        </a>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== FLOATING TOAST ==================== -->
+  <div id="toast" class="fixed top-5 left-4 right-4 z-50 flex justify-center pointer-events-none" style="display: none;">
+    <div id="toast-body" class="bg-slate-900/95 backdrop-blur-md text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 animate-toast flex items-center gap-2.5 max-w-sm">
+      <i id="toast-icon" class="fas fa-info-circle text-blue-400"></i>
+      <span id="toast-message">Notification</span>
+    </div>
+  </div>
+
+
+  <!-- ==================== CLIENT LOGIC ==================== -->
+  <script>
+    // Extract referral code from URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const inviteParam = urlParams.get('vcode') || urlParams.get('ref') || 'tp3340vnxr';
+    
+    document.getElementById('input-invitation').value = inviteParam;
+
+    // View Navigation
+    function openLanding() {
+      document.getElementById('view-landing').classList.add('active');
+      document.getElementById('view-signup').classList.remove('active');
+      window.scrollTo(0, 0);
+    }
+
+    function openSignup() {
+      document.getElementById('view-landing').classList.remove('active');
+      document.getElementById('view-signup').classList.add('active');
+      window.scrollTo(0, 0);
+    }
+
+    // Auto-route based on path
+    if (window.location.pathname.includes('/signup')) {
+      openSignup();
+    } else {
+      openLanding();
+    }
+
+    // Toast helper
+    let toastTimeout;
+    function showToast(message, type = 'info') {
+      const toast = document.getElementById('toast');
+      const toastMessage = document.getElementById('toast-message');
+      const toastIcon = document.getElementById('toast-icon');
+
+      toastMessage.textContent = message;
+      
+      if (type === 'error') {
+        toastIcon.className = 'fas fa-exclamation-circle text-rose-400';
+      } else if (type === 'success') {
+        toastIcon.className = 'fas fa-check-circle text-emerald-400';
+      } else {
+        toastIcon.className = 'fas fa-info-circle text-blue-400';
+      }
+
+      toast.style.display = 'flex';
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.style.display = 'none';
+      }, 3500);
+    }
+
+    // OTP Timer Logic
+    let otpCooldown = 0;
+    let otpTimerId = null;
+
+    async function sendOtp() {
+      if (otpCooldown > 0) return;
+
+      const mobile = document.getElementById('input-mobile').value.trim();
+      if (!mobile || mobile.length !== 10 || !/^\d{10}$/.test(mobile)) {
+        showToast('Please enter a valid 10-digit mobile number', 'error');
+        document.getElementById('input-mobile').focus();
+        return;
+      }
+
+      const btnOtp = document.getElementById('btn-otp');
+      btnOtp.disabled = true;
+      btnOtp.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+      try {
+        const response = await fetch('/api/auth/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mobile, isSignup: true })
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          showToast(data.message || 'OTP sent successfully to your mobile!', 'success');
+          startOtpCountdown(60);
+        } else {
+          showToast(data.error || 'Failed to send OTP. Please try again.', 'error');
+          btnOtp.disabled = false;
+          btnOtp.textContent = 'Send OTP';
+        }
+      } catch (err) {
+        showToast('Network error while requesting OTP. Please retry.', 'error');
+        btnOtp.disabled = false;
+        btnOtp.textContent = 'Send OTP';
+      }
+    }
+
+    function startOtpCountdown(seconds) {
+      otpCooldown = seconds;
+      const btnOtp = document.getElementById('btn-otp');
+      btnOtp.disabled = true;
+
+      clearInterval(otpTimerId);
+      otpTimerId = setInterval(() => {
+        otpCooldown--;
+        if (otpCooldown > 0) {
+          btnOtp.textContent = `Resend (${otpCooldown}s)`;
+        } else {
+          clearInterval(otpTimerId);
+          btnOtp.disabled = false;
+          btnOtp.textContent = 'Send OTP';
+        }
+      }, 1000);
+    }
+
+    // Submit Registration Logic
+    async function submitSignup() {
+      const mobile = document.getElementById('input-mobile').value.trim();
+      const password = document.getElementById('input-password').value;
+      const confirmPassword = document.getElementById('input-confirm').value;
+      const invitationCode = document.getElementById('input-invitation').value.trim();
+      const otp = document.getElementById('input-otp').value.trim();
+
+      if (!mobile || mobile.length !== 10) {
+        showToast('Please enter a valid 10-digit mobile number', 'error');
+        return;
+      }
+      if (!password || password.length < 6) {
+        showToast('Password must be at least 6 characters', 'error');
+        return;
+      }
+      if (password !== confirmPassword) {
+        showToast('Passwords do not match', 'error');
+        return;
+      }
+      if (!otp) {
+        showToast('Please enter the 6-digit OTP', 'error');
+        return;
+      }
+
+      const btnSubmit = document.getElementById('btn-signup');
+      btnSubmit.disabled = true;
+      btnSubmit.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Creating Account...';
+
+      try {
+        const response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mobile,
+            password,
+            confirmPassword,
+            invitationCode,
+            otp
+          })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          // Show Success Modal prompting app download
+          document.getElementById('modal-success').style.display = 'flex';
+          
+          // Trigger automatic download
+          try {
+            const dlLink = document.createElement('a');
+            dlLink.href = '/TpayX.apk';
+            dlLink.download = 'TpayX.apk';
+            document.body.appendChild(dlLink);
+            dlLink.click();
+            document.body.removeChild(dlLink);
+          } catch (e) {
+            console.log('Auto-download fallback:', e);
+          }
+        } else {
+          showToast(data.error || 'Registration failed. Please try again.', 'error');
+          btnSubmit.disabled = false;
+          btnSubmit.innerHTML = '<span>Create Account</span>';
+        }
+      } catch (err) {
+        showToast('Server connection failed. Please check your network.', 'error');
+        btnSubmit.disabled = false;
+        btnSubmit.innerHTML = '<span>Create Account</span>';
+      }
+    }
+  </script>
+</body>
+</html>
