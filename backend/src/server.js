@@ -1147,7 +1147,7 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
     const userId = req.user.id;
     const now = Date.now();
     const requests = (dbData.orders || [])
-      .filter(o => o.receiver_id == userId && (o.status === 'Confirming' || o.status === 'Admin Review' || o.status === 'Disputed' || o.status === 'Pending'))
+      .filter(o => o.receiver_id == userId && (o.status === 'Confirming' || o.status === 'Pending'))
       .map(o => {
         const buyer = (dbData.users || []).find(u => u.id == o.user_id) || {};
         return {
@@ -1304,7 +1304,7 @@ app.post('/api/orders/:orderId/p2p-receive', authMiddleware, async (req, res) =>
       }
     }
 
-    saveDb();
+    await saveDbAsync();
 
     // Trigger dynamic commissions for buyer referral network
     try {

@@ -205,11 +205,19 @@ exports.getPaymentQuote = async (req, res) => {
     if (assetType === 'INR') {
       loadDb();
 
-      // Find all unique eligible users with available T-Coin balance (bcoin_balance) >= amtNum & >= 200 and active bank
-      // STRICT SINGLE-PENDING-ORDER ENFORCEMENT:
-      // A user who has ANY active unfinalized sales order (or active unexpired quote) CANNOT receive another sales order.
+      const currentUser = (dbData.users || []).find(u => u.id == userId) || {};
       const eligibleUsers = dbData.users.filter(u => {
-        if (u.id == userId || u.id == 1 || u.is_blocked) return false;
+        // STRICT SELF-MATCHING PREVENTION: Buyer can NEVER be their own seller/receiver
+        if (
+          String(u.id) === String(userId) ||
+          Number(u.id) === Number(userId) ||
+          (currentUser.mobile && u.mobile && u.mobile === currentUser.mobile) ||
+          (currentUser.uid && u.uid && u.uid === currentUser.uid) ||
+          Number(u.id) === 1 ||
+          u.is_blocked
+        ) {
+          return false;
+        }
 
         // 1. Check if user already has an active, unfinalized sales order
         const hasActiveSalesOrder = (dbData.orders || []).some(o => 
@@ -259,14 +267,14 @@ exports.getPaymentQuote = async (req, res) => {
         }
       }
 
-      if (matchedUser) {
+      if (matchedUser && Number(matchedUser.id) !== Number(userId) && String(matchedUser.id) !== String(userId)) {
         receiverId = matchedUser.id;
         timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         
-        const activeBanks = dbData.bank_accounts.filter(b => b.user_id == receiverId && b.status === 'Active');
+        const activeBanks = (dbData.bank_accounts || []).filter(b => b.user_id == receiverId && b.user_id != userId && b.status === 'Active');
         const bank = activeBanks.length > 0 
           ? activeBanks[Math.floor(Math.random() * activeBanks.length)]
-          : (dbData.bank_accounts.find(b => b.user_id == receiverId) || {});
+          : ((dbData.bank_accounts || []).find(b => b.user_id == receiverId && b.user_id != userId) || {});
 
         const receiverUser = matchedUser;
         const settings = dbData.settings || {};
@@ -455,6 +463,21 @@ exports.createOrder = async (req, res) => {
     const timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     let finalReceiverId = receiver_id || 1;
 
+    // STRICT SELF-MATCHING PREVENTION: Buyer can NEVER be their own receiver
+    const buyerUser = (dbData.users || []).find(u => u.id == userId) || {};
+    const candidateReceiver = (dbData.users || []).find(u => u.id == finalReceiverId) || {};
+
+    if (
+      String(finalReceiverId) === String(userId) ||
+      Number(finalReceiverId) === Number(userId) ||
+      (buyerUser.mobile && candidateReceiver.mobile && buyerUser.mobile === candidateReceiver.mobile) ||
+      (buyerUser.uid && candidateReceiver.uid && buyerUser.uid === candidateReceiver.uid)
+    ) {
+      console.log(`[OrderAssignment] Receiver ${finalReceiverId} matches buyer (${userId}). Enforcing fallback to Admin (ID 1).`);
+      finalReceiverId = 1;
+      withdrawal_id = null;
+    }
+
     // Re-verify that the assigned receiver does not already have an active unfinalized sales order
     if (finalReceiverId != 1) {
       const hasActiveSalesOrder = (dbData.orders || []).some(o =>
@@ -468,14 +491,15 @@ exports.createOrder = async (req, res) => {
     }
 
     // Build receiver details
-    const bank = dbData.bank_accounts.find(b => b.user_id == finalReceiverId && b.status === 'Active') || {
+    const bank = (dbData.bank_accounts || []).find(b => b.user_id == finalReceiverId && b.user_id != userId && b.status === 'Active') ||
+      (dbData.bank_accounts || []).find(b => b.user_id == 1 && b.status === 'Active') || {
       bank_name: 'HDFC Bank',
       account_holder: 'Tushar Admin',
       account_number: '50100481729381',
       ifsc_code: 'HDFCO000123',
       upi_id: '8763527330@upi'
     };
-    const receiverUser = dbData.users.find(u => u.id == finalReceiverId) || { mobile: '8763527330' };
+    const receiverUser = (dbData.users || []).find(u => u.id == finalReceiverId && u.id != userId) || (dbData.users || []).find(u => u.id == 1) || { mobile: '8763527330' };
     const receiverDetails = {
       receiver_name: bank.account_holder,
       bank_name: bank.bank_name,

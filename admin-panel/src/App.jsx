@@ -18,20 +18,38 @@ const OrderTimer = ({ createdAt, timerExpiry, status }) => {
 
   useEffect(() => {
     const updateTimer = () => {
-      const targetTime = timerExpiry
-        ? new Date(timerExpiry).getTime()
-        : (new Date(createdAt).getTime() + 15 * 60 * 1000);
-      const diffMs = targetTime - Date.now();
+      try {
+        let targetTime = 0;
+        if (timerExpiry) {
+          const t = new Date(timerExpiry).getTime();
+          if (!isNaN(t)) targetTime = t;
+        }
+        if (!targetTime && createdAt) {
+          const c = new Date(createdAt).getTime();
+          if (!isNaN(c)) targetTime = c + 15 * 60 * 1000;
+        }
 
-      if (diffMs <= 0) {
+        if (!targetTime || isNaN(targetTime)) {
+          setTimeLeft('15m Expired');
+          setIsExpired(true);
+          return;
+        }
+
+        const diffMs = targetTime - Date.now();
+
+        if (isNaN(diffMs) || diffMs <= 0) {
+          setTimeLeft('15m Expired');
+          setIsExpired(true);
+        } else {
+          const totalSecs = Math.floor(diffMs / 1000);
+          const mins = Math.floor(totalSecs / 60);
+          const secs = totalSecs % 60;
+          setTimeLeft(`${mins}m ${secs < 10 ? '0' : ''}${secs}s left`);
+          setIsExpired(false);
+        }
+      } catch (e) {
         setTimeLeft('15m Expired');
         setIsExpired(true);
-      } else {
-        const totalSecs = Math.floor(diffMs / 1000);
-        const mins = Math.floor(totalSecs / 60);
-        const secs = totalSecs % 60;
-        setTimeLeft(`${mins}m ${secs < 10 ? '0' : ''}${secs}s left`);
-        setIsExpired(false);
       }
     };
 
@@ -52,7 +70,7 @@ const OrderTimer = ({ createdAt, timerExpiry, status }) => {
           : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 animate-pulse'
       }`}>
         <i className="fas fa-clock text-[9px]" />
-        {timeLeft}
+        {timeLeft || '15m Expired'}
       </span>
     </div>
   );
@@ -916,7 +934,12 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
   };
 
   const formatCurrency = (val) => {
-    return typeof val === 'number' ? val.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
+    try {
+      const num = Number(val);
+      return !isNaN(num) ? num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00';
+    } catch (e) {
+      return '0.00';
+    }
   };
 
   // Filter users by search
@@ -1323,89 +1346,103 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1b1c34]/40">
-                {orders.length === 0 ? (
+                {!Array.isArray(orders) || orders.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="text-center py-12 text-slate-500 font-bold uppercase tracking-wider">
                       No deposit orders found in database.
                     </td>
                   </tr>
                 ) : (
-                  orders.map(order => (
-                    <tr key={order.order_id} className={`transition-colors ${theme === 'dark' ? 'hover:bg-[#181931]/30' : 'hover:bg-slate-50'}`}>
-                      <td className="px-6 py-4">
-                        <span className={`font-semibold block font-mono text-[12px] ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{order.order_id}</span>
-                        <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1 block">
-                          {new Date(order.created_at).toLocaleString('en-IN')}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`font-bold block ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{order.user_mobile}</span>
-                        <span className="text-[10px] text-slate-500 font-mono block mt-0.5">UID: {order.user_uid}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="space-y-0.5">
-                          <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
-                            Asset: <span className={theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}>{order.asset_type}</span>
+                  orders.map((order, idx) => {
+                    if (!order) return null;
+                    const orderId = order.order_id || `ORD_${idx}`;
+                    const createdDateStr = (() => {
+                      try {
+                        if (!order.created_at) return 'N/A';
+                        const d = new Date(order.created_at);
+                        return isNaN(d.getTime()) ? 'N/A' : d.toLocaleString('en-IN');
+                      } catch (e) {
+                        return 'N/A';
+                      }
+                    })();
+
+                    return (
+                      <tr key={orderId} className={`transition-colors ${theme === 'dark' ? 'hover:bg-[#181931]/30' : 'hover:bg-slate-50'}`}>
+                        <td className="px-6 py-4">
+                          <span className={`font-semibold block font-mono text-[12px] ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{orderId}</span>
+                          <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1 block">
+                            {createdDateStr}
                           </span>
-                          <span className="text-[11px] font-mono text-violet-400 font-bold block">
-                            UTR: {order.utr || 'NOT_SUBMITTED'}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="space-y-0.5 text-[11px]">
-                          <span className="font-bold text-emerald-400 block">{order.receiver_name || 'Tushar Admin'}</span>
-                          <span className="text-slate-400 font-mono block text-[10px]">Mob: {order.receiver_mobile || '8763527330'}</span>
-                          <span className="text-slate-500 text-[10px] block leading-tight">
-                            {order.receiver_bank || 'HDFC Bank'} (A/C: {order.receiver_account || 'N/A'})
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <OrderTimer createdAt={order.created_at} timerExpiry={order.timer_expiry} status={order.status} />
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`font-black text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>₹{formatCurrency(order.amount)}</span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <span
-                          className={`inline-block px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                            order.status === 'Confirming'
-                              ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
-                              : order.status === 'Admin Review'
-                              ? 'bg-purple-500/10 text-purple-400 border-purple-500/30 font-bold'
-                              : order.status === 'Completed'
-                              ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                              : 'bg-rose-500/10 text-red-500 border-rose-500/20'
-                          }`}
-                        >
-                          {order.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        {['Confirming', 'Admin Review', 'Pending'].includes(order.status) ? (
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={() => handleApprove(order.order_id)}
-                              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-2 rounded-xl shadow-md active:scale-95 transition-all flex items-center gap-1.5 font-bold uppercase tracking-wider text-xs"
-                            >
-                              <i className="fas fa-check" /> Approve
-                            </button>
-                            <button
-                              onClick={() => handleCancel(order.order_id)}
-                              className={`font-bold px-3 py-2 rounded-xl active:scale-95 transition-all flex items-center gap-1.5 uppercase tracking-wider text-xs border ${
-                                theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] text-red-400 hover:bg-red-500 hover:text-white' : 'bg-red-50 border-red-100 text-red-500 hover:bg-red-500 hover:text-white'
-                              }`}
-                            >
-                              <i className="fas fa-times" /> Reject
-                            </button>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`font-bold block ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{order.user_mobile || 'N/A'}</span>
+                          <span className="text-[10px] text-slate-500 font-mono block mt-0.5">UID: {order.user_uid || 'N/A'}</span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-0.5">
+                            <span className="text-[10px] text-slate-500 font-bold block uppercase tracking-wider">
+                              Asset: <span className={theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}>{order.asset_type || 'INR'}</span>
+                            </span>
+                            <span className="text-[11px] font-mono text-violet-400 font-bold block">
+                              UTR: {order.utr || 'NOT_SUBMITTED'}
+                            </span>
                           </div>
-                        ) : (
-                          <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest italic pr-3">Processed</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="space-y-0.5 text-[11px]">
+                            <span className="font-bold text-emerald-400 block">{order.receiver_name || 'Tushar Admin'}</span>
+                            <span className="text-slate-400 font-mono block text-[10px]">Mob: {order.receiver_mobile || '8763527330'}</span>
+                            <span className="text-slate-500 text-[10px] block leading-tight">
+                              {order.receiver_bank || 'HDFC Bank'} (A/C: {order.receiver_account || 'N/A'})
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <OrderTimer createdAt={order.created_at} timerExpiry={order.timer_expiry} status={order.status} />
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`font-black text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-800'}`}>₹{formatCurrency(order.amount)}</span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <span
+                            className={`inline-block px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border ${
+                              order.status === 'Confirming'
+                                ? 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20'
+                                : order.status === 'Admin Review'
+                                ? 'bg-purple-500/10 text-purple-400 border-purple-500/30 font-bold'
+                                : order.status === 'Completed'
+                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                                : 'bg-rose-500/10 text-red-500 border-rose-500/20'
+                            }`}
+                          >
+                            {order.status || 'Pending'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          {['Confirming', 'Admin Review', 'Pending'].includes(order.status) ? (
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                onClick={() => handleApprove(order.order_id || orderId)}
+                                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-2 rounded-xl shadow-md active:scale-95 transition-all flex items-center gap-1.5 font-bold uppercase tracking-wider text-xs"
+                              >
+                                <i className="fas fa-check" /> Approve
+                              </button>
+                              <button
+                                onClick={() => handleCancel(order.order_id || orderId)}
+                                className={`font-bold px-3 py-2 rounded-xl active:scale-95 transition-all flex items-center gap-1.5 uppercase tracking-wider text-xs border ${
+                                  theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] text-red-400 hover:bg-red-500 hover:text-white' : 'bg-red-50 border-red-100 text-red-500 hover:bg-red-500 hover:text-white'
+                                }`}
+                              >
+                                <i className="fas fa-times" /> Reject
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest italic pr-3">Processed</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
