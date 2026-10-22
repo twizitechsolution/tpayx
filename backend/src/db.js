@@ -11,24 +11,11 @@ try {
   require('dotenv').config();
 } catch (e) {}
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vjfxbhvxndcxcxynzhzo.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZqZnhiaHZ4bmRjeGN4eW56aHpvIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODYzNTA5NSwiZXhwIjoyMTA0MjExMDk1fQ.YDvfCj4S3W3YxrOs5AWDmTP1s4QxSwOwRt9c-_fdYIc';
-
+// Supabase has been permanently replaced by local aaPanel MySQL database
+const SUPABASE_URL = null;
+const SUPABASE_KEY = null;
 let supabase = null;
-if (SUPABASE_URL && SUPABASE_KEY) {
-  try {
-    const { createClient } = require('@supabase/supabase-js');
-    let ws;
-    try { ws = require('ws'); } catch (e) {}
-    supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: { persistSession: false },
-      ...(ws ? { realtime: { transport: ws } } : {})
-    });
-    console.log('[Supabase] Initialized Supabase DB Client successfully.');
-  } catch (err) {
-    console.error('[Supabase] Client initialization error:', err.message);
-  }
-}
+
 
 const dataDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../data');
 const dbPath = process.env.DATABASE_PATH || path.join(dataDir, 'database.json');
@@ -83,190 +70,57 @@ let isHydrated = false;
 let currentHydrationPromise = null;
 let currentSyncPromise = null;
 
-async function syncDbFromSupabase(force = false) {
-  if (!supabase) {
-    isHydrated = true;
-    return;
-  }
-  if (currentHydrationPromise) {
-    return currentHydrationPromise;
-  }
-  const now = Date.now();
-  if (!force && isHydrated && localStateVersion > 0 && (now - lastSyncCheckTime < 10000)) {
-    return;
-  }
-  lastSyncCheckTime = now;
-  
-  currentHydrationPromise = (async () => {
-    try {
-      if (force || !isHydrated || localStateVersion === 0) {
-        console.log(`[Supabase Hydrate] Pulling remote state (localVersion: ${localStateVersion}, isHydrated: ${isHydrated})...`);
-        const statePromise = supabase
-          .from('settings')
-          .select('key, value')
-          .in('key', ['app_database_state', 'app_db_version']);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase state fetch timeout')), 18000));
-        const { data: rows } = await Promise.race([statePromise, timeoutPromise]).catch(err => {
-          console.warn('[Supabase Hydrate Fetch Warning]:', err.message);
-          return { data: null };
-        });
+async function syncDbFromMysql() {
+  if (!mysqlPool) return;
+  try {
+    const [userRows] = await mysqlPool.query('SELECT * FROM users');
+    if (Array.isArray(userRows)) dbData.users = userRows;
 
-        if (rows && Array.isArray(rows)) {
-          const stateRow = rows.find(r => r.key === 'app_database_state');
-          const verRow = rows.find(r => r.key === 'app_db_version');
-          const remoteVersion = verRow && verRow.value ? Number(verRow.value) : Date.now();
+    const [orderRows] = await mysqlPool.query('SELECT * FROM orders');
+    if (Array.isArray(orderRows)) dbData.orders = orderRows;
 
-          if (stateRow && stateRow.value) {
-            const parsed = JSON.parse(stateRow.value);
-            if (parsed && parsed.dbData) {
-              const activeOtps = { ...(parsed.dbData.otps || {}), ...(dbData.otps || {}) };
-              const activeQuotes = { ...(parsed.dbData.quotes || {}), ...(dbData.quotes || {}) };
+    const [bankRows] = await mysqlPool.query('SELECT * FROM bank_accounts');
+    if (Array.isArray(bankRows)) dbData.bank_accounts = bankRows;
 
-              for (let key in dbData) delete dbData[key];
-              Object.assign(dbData, parsed.dbData);
-              dbData.otps = activeOtps;
-              dbData.quotes = activeQuotes;
+    const [txnRows] = await mysqlPool.query('SELECT * FROM transactions');
+    if (Array.isArray(txnRows)) dbData.transactions = txnRows;
 
-              if (parsed.idTrackers) {
-                for (let key in idTrackers) delete idTrackers[key];
-                Object.assign(idTrackers, parsed.idTrackers);
-              }
+    const [productRows] = await mysqlPool.query('SELECT * FROM products');
+    if (Array.isArray(productRows)) dbData.products = productRows;
 
-              localStateVersion = remoteVersion;
-              isHydrated = true;
-              try {
-                fs.writeFileSync(dbPath, JSON.stringify({ dbData, idTrackers }, null, 2), 'utf8');
-              } catch (e) {}
-              console.log(`[Supabase Hydrate] State hydrated successfully. Users: ${dbData.users.length}, Orders: ${dbData.orders.length}`);
-            }
+    const [slabRows] = await mysqlPool.query('SELECT * FROM commission_slabs');
+    if (Array.isArray(slabRows)) dbData.commission_slabs = slabRows;
+
+    const [settingsRows] = await mysqlPool.query('SELECT `key`, `value` FROM settings');
+    if (Array.isArray(settingsRows)) {
+      dbData.settings = dbData.settings || {};
+      for (const row of settingsRows) {
+        if (row && row.key) {
+          let val = row.value;
+          try {
+            const parsed = JSON.parse(val);
+            if (typeof parsed === 'number' || typeof parsed === 'boolean') val = parsed;
+          } catch (e) {
+            if (!isNaN(Number(val)) && typeof val === 'string' && val.trim() !== '') val = Number(val);
           }
-        }
-      } else {
-        const versionPromise = supabase.from('settings').select('value').eq('key', 'app_db_version').single();
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase version check timeout')), 6000));
-        const { data: verRow } = await Promise.race([versionPromise, timeoutPromise]).catch(() => ({ data: null }));
-        const remoteVersion = verRow && verRow.value ? Number(verRow.value) : 0;
-        if (remoteVersion > localStateVersion) {
-          currentHydrationPromise = null;
-          return syncDbFromSupabase(true);
+          dbData.settings[row.key] = val;
         }
       }
-    } catch (err) {
-      console.warn('[Supabase Hydrate Warning]:', err.message);
-    } finally {
-      currentHydrationPromise = null;
     }
-  })();
+    isHydrated = true;
+    console.log(`[Database Sync] Synced from MySQL successfully. Users: ${dbData.users.length}, Orders: ${dbData.orders.length}`);
+  } catch (err) {
+    console.warn('[Database Sync Warning]: Could not sync cache from MySQL:', err.message);
+  }
+}
 
-  return currentHydrationPromise;
+async function syncDbFromSupabase(force = false) {
+  isHydrated = true;
+  return Promise.resolve();
 }
 
 async function syncToSupabase() {
-  if (!supabase) return;
-  try {
-    const newVersion = Date.now();
-    localStateVersion = newVersion;
-    lastSyncCheckTime = newVersion;
-    const fullStateStr = JSON.stringify({ dbData, idTrackers });
-
-    // 1. Commit primary state to settings table (critical single source of truth)
-    const { error: stateError } = await Promise.race([
-      supabase.from('settings').upsert([
-        {
-          key: 'app_database_state',
-          value: fullStateStr,
-          description: 'Synchronized full database state'
-        },
-        {
-          key: 'app_db_version',
-          value: String(newVersion),
-          description: 'Database synchronization version timestamp'
-        },
-        {
-          key: 'deposit_commission_percent',
-          value: String(dbData.settings?.deposit_commission_percent || 2.5),
-          description: 'Deposit commission percent'
-        },
-        {
-          key: 'telegram_link',
-          value: String(dbData.settings?.telegram_link || 'https://t.me/TpayX'),
-          description: 'Support Telegram link'
-        },
-        {
-          key: 'telegram_username',
-          value: String(dbData.settings?.telegram_username || '@TpayX'),
-          description: 'Support Telegram username'
-        }
-      ], { onConflict: 'key' }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase sync timeout')), 6000))
-    ]).catch(err => {
-      console.warn('[Supabase Sync State Warning]:', err.message);
-      return { error: err };
-    });
-
-    if (stateError) {
-      console.error('[Supabase State Upsert Error]:', stateError.message);
-    }
-
-    // 2. Secondary sync of individual tables in parallel
-    const tablePromises = [];
-    if (dbData.users && dbData.users.length > 0) {
-      const userRows = dbData.users.map(u => ({
-        id: Number(u.id),
-        uid: u.uid,
-        mobile: u.mobile,
-        name: u.username || u.name || null,
-        password_hash: u.password_hash || null,
-        bcoin_balance: u.bcoin_balance || 0,
-        inr_balance: u.inr_balance || 0,
-        total_earnings: u.total_earnings || 0,
-        total_withdrawals: 0,
-        is_blocked: u.is_blocked || false,
-        role: u.id == 1 ? 'admin' : 'user',
-        created_at: u.created_at || new Date().toISOString()
-      }));
-      tablePromises.push(supabase.from('users').upsert(userRows));
-    }
-    if (dbData.bank_accounts && dbData.bank_accounts.length > 0) {
-      const bankRows = dbData.bank_accounts.map(b => ({
-        id: Number(b.id),
-        user_id: Number(b.user_id),
-        bank_name: b.bank_name,
-        account_number: b.account_number,
-        account_holder: b.account_holder,
-        ifsc: b.ifsc_code || b.ifsc || null,
-        upi_id: b.upi_id || null,
-        is_active: b.status === 'Active',
-        status: b.status || 'Active',
-        created_at: b.created_at || new Date().toISOString()
-      }));
-      tablePromises.push(supabase.from('bank_accounts').upsert(bankRows));
-    }
-    if (dbData.orders && dbData.orders.length > 0) {
-      const orderRows = dbData.orders.map(o => ({
-        id: String(o.id),
-        order_id: o.order_id,
-        user_id: Number(o.user_id),
-        type: o.asset_type === 'INR' ? 'DEPOSIT' : 'PURCHASE',
-        amount: Number(o.amount),
-        asset: o.asset_type || 'INR',
-        status: o.status || 'Confirming',
-        utr_number: o.utr || null,
-        proof_url: o.screenshot_path || null,
-        created_at: o.created_at || new Date().toISOString()
-      }));
-      tablePromises.push(supabase.from('orders').upsert(orderRows));
-    }
-
-    if (tablePromises.length > 0) {
-      await Promise.race([
-        Promise.all(tablePromises),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase tables sync timeout')), 6000))
-      ]).catch(err => console.warn('[Supabase Tables Sync Warning]:', err.message));
-    }
-  } catch (err) {
-    console.error('[Supabase Sync Error]:', err.message);
-  }
+  return Promise.resolve();
 }
 
 // Save helpers
@@ -640,26 +494,97 @@ function loadDb() {
   }
 }
 
-// Main query simulator
 // MySQL Database Pool for aaPanel / Local Server
+const dbHost = process.env.DB_HOST || '127.0.0.1';
+const dbPort = parseInt(process.env.DB_PORT || '3306', 10);
+const dbUser = process.env.DB_USER || 'tpayx_user';
+const dbPassword = process.env.DB_PASSWORD !== undefined ? process.env.DB_PASSWORD : 'Tpayx@2026Secure';
+const dbName = process.env.DB_NAME || 'tpayx_db';
+
 let mysqlPool = null;
-if (process.env.DB_NAME || process.env.DB_USER) {
+try {
+  const mysql = require('mysql2/promise');
+  mysqlPool = mysql.createPool({
+    host: dbHost,
+    port: dbPort,
+    user: dbUser,
+    password: dbPassword,
+    database: dbName,
+    waitForConnections: true,
+    connectionLimit: 25,
+    queueLimit: 0,
+    decimalNumbers: true,
+    dateStrings: true
+  });
+  console.log(`[Database] MySQL Connection Pool successfully initialized for '${dbName}' on ${dbHost}:${dbPort} (User: ${dbUser})`);
+
+  // Test connection immediately and trigger initial sync
+  mysqlPool.query('SELECT 1 as test').then(() => {
+    console.log(`[Database] MySQL Connected successfully! Syncing live cache from MySQL...`);
+    syncDbFromMysql().catch(() => {});
+  }).catch(err => {
+    console.error(`[Database] MySQL Connection Test Warning:`, err.message);
+  });
+} catch (err) {
+  console.error('[Database] Failed to initialize MySQL Pool:', err.message);
+}
+
+async function getSettingsMap() {
+  const settings = {
+    level1_commission: 10,
+    level2_commission: 5,
+    level3_commission: 2,
+    min_plan_amount: 200,
+    max_plan_amount: 100000,
+    telegram_link: "https://t.me/TpayX",
+    telegram_username: "@TpayX",
+    winpey_api_key: "488b923c-2b03-465e-b9df-55d018124e0c",
+    winpey_api_secret: "fc4a56a2439f47c19213c747ee5693c6",
+    payment_mode: "gateway",
+    upi_ids: "",
+    deposit_commission_percent: 2.5,
+    user_commission_percent: 2.5,
+    commission_percent: 2.5
+  };
+
   try {
-    const mysql = require('mysql2/promise');
-    mysqlPool = mysql.createPool({
-      host: process.env.DB_HOST || '127.0.0.1',
-      port: parseInt(process.env.DB_PORT || '3306', 10),
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASSWORD || '',
-      database: process.env.DB_NAME || 'tpayx_db',
-      waitForConnections: true,
-      connectionLimit: 20,
-      queueLimit: 0,
-      decimalNumbers: true
-    });
-    console.log(`[Database] MySQL Connection Pool successfully initialized for '${process.env.DB_NAME}' on ${process.env.DB_HOST || '127.0.0.1'}`);
+    const rows = await query.all('SELECT `key`, `value` FROM settings');
+    if (Array.isArray(rows)) {
+      for (const row of rows) {
+        if (row && row.key) {
+          let val = row.value;
+          try {
+            const parsed = JSON.parse(val);
+            if (typeof parsed === 'number' || typeof parsed === 'boolean') {
+              val = parsed;
+            }
+          } catch (e) {
+            if (!isNaN(Number(val)) && typeof val === 'string' && val.trim() !== '') {
+              val = Number(val);
+            }
+          }
+          settings[row.key] = val;
+        }
+      }
+    }
   } catch (err) {
-    console.error('[Database] Failed to initialize MySQL Pool:', err.message);
+    console.error('[getSettingsMap error]:', err.message);
+  }
+  return settings;
+}
+
+async function saveSettingValue(key, value) {
+  try {
+    const valStr = (value === null || value === undefined) ? '' : String(value);
+    await query.run(
+      'INSERT INTO settings (`key`, `value`, `description`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
+      [key, valStr, 'Global platform configuration']
+    );
+    if (dbData.settings) {
+      dbData.settings[key] = value;
+    }
+  } catch (err) {
+    console.error(`[saveSettingValue error for ${key}]:`, err.message);
   }
 }
 
@@ -671,7 +596,7 @@ const query = {
   get: async (sql, params = []) => {
     if (mysqlPool) {
       try {
-        const [rows] = await mysqlPool.execute(normalizeSql(sql), params);
+        const [rows] = await mysqlPool.query(normalizeSql(sql), params);
         return rows && rows.length > 0 ? rows[0] : null;
       } catch (err) {
         console.error('[MySQL query.get error]:', err.message, 'SQL:', sql);
@@ -841,7 +766,7 @@ const query = {
   all: async (sql, params = []) => {
     if (mysqlPool) {
       try {
-        const [rows] = await mysqlPool.execute(normalizeSql(sql), params);
+        const [rows] = await mysqlPool.query(normalizeSql(sql), params);
         return rows || [];
       } catch (err) {
         console.error('[MySQL query.all error]:', err.message, 'SQL:', sql);
@@ -978,7 +903,7 @@ const query = {
   run: async (sql, params = []) => {
     if (mysqlPool) {
       try {
-        const [result] = await mysqlPool.execute(normalizeSql(sql), params);
+        const [result] = await mysqlPool.query(normalizeSql(sql), params);
         return {
           lastID: result.insertId,
           insertId: result.insertId,
@@ -1439,10 +1364,11 @@ function runStartupMigrations() {
 
 // Seed script wrapping
 async function initDb() {
-  loadDb();
-  if (supabase) {
-    console.log('[Supabase Init] Hydrating latest remote state from Supabase on startup...');
-    await syncDbFromSupabase(true);
+  if (mysqlPool) {
+    console.log('[Database Init] Initializing database state from local MySQL...');
+    await syncDbFromMysql();
+  } else {
+    loadDb();
   }
   isHydrated = true;
   runStartupMigrations();
@@ -1685,6 +1611,7 @@ function getBonusSlabLabelForAmount(amount) {
 module.exports = {
   db: {},
   supabase,
+  mysqlPool,
   query,
   initDb,
   dbData,
@@ -1695,10 +1622,13 @@ module.exports = {
   loadDb,
   syncDbFromSupabase,
   syncToSupabase,
+  syncDbFromMysql,
+  getSettingsMap,
+  saveSettingValue,
   saveBase64File,
   getBonusForAmount,
   getBonusSlabLabelForAmount,
-  isSupabaseConnected: () => !!supabase,
+  isSupabaseConnected: () => false,
   isHydratedStatus: () => isHydrated,
   getLocalVersion: () => localStateVersion
 };

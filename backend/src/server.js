@@ -10,7 +10,7 @@ try {
 
 const express = require('express');
 const cors = require('cors');
-const { initDb, query, dbData, idTrackers, saveDb, saveDbAsync, getPendingSync, loadDb, syncDbFromSupabase, syncToSupabase, getBonusForAmount, getBonusSlabLabelForAmount, isSupabaseConnected, isHydratedStatus, getLocalVersion } = require('./db');
+const { initDb, query, dbData, idTrackers, saveDb, saveDbAsync, getPendingSync, loadDb, syncDbFromMysql, getSettingsMap, saveSettingValue, getBonusForAmount, getBonusSlabLabelForAmount, isSupabaseConnected, isHydratedStatus, getLocalVersion } = require('./db');
 
 // Controllers
 const authController = require('./controllers/authController');
@@ -44,32 +44,20 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Cold-boot Hydration Barrier: Guarantees NO HTTP route executes before Supabase DB is 100% hydrated
-let coldBootBarrierPromise = null;
-function ensureDatabaseHydrated() {
-  if (!coldBootBarrierPromise) {
-    coldBootBarrierPromise = (async () => {
-      console.log('[ColdBoot Barrier] Intercepted request on cold container. Initializing DB from Supabase...');
+// Database initialization on startup
+let dbInitialized = false;
+async function ensureDbReady() {
+  if (!dbInitialized) {
+    dbInitialized = true;
+    try {
       await initDb();
-      console.log('[ColdBoot Barrier] Database successfully hydrated from Supabase.');
-    })().catch(err => {
-      console.error('[ColdBoot Barrier Error]:', err.message);
-      coldBootBarrierPromise = null; // Allow retry on subsequent request if failed
-      throw err;
-    });
+    } catch (e) {
+      console.warn('[Database Init Warning]:', e.message);
+    }
   }
-  return coldBootBarrierPromise;
 }
-
-// Global State Hydration Middleware - Ensures all serverless containers stay 100% in sync with Supabase
 app.use(async (req, res, next) => {
-  try {
-    await ensureDatabaseHydrated();
-    const isMutation = req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS';
-    await syncDbFromSupabase(isMutation);
-  } catch (err) {
-    console.warn('[Sync Middleware Warning]:', err.message);
-  }
+  if (!dbInitialized) await ensureDbReady();
   next();
 });
 
@@ -478,12 +466,7 @@ app.get('/api/price-ranges', async (req, res) => {
 
 app.get('/api/settings', async (req, res) => {
   try {
-    loadDb();
-    const config = await query.get('SELECT * FROM settings LIMIT 1');
-    const fullConfig = {
-      ...(config || {}),
-      ...(dbData.settings || {})
-    };
+    const fullConfig = await getSettingsMap();
     let tgLink = fullConfig.telegram_link || 'https://t.me/TpayX';
     let tgUser = fullConfig.telegram_username || '';
     if (!tgUser && tgLink) {
@@ -511,10 +494,9 @@ app.get('/api/admin/users', adminAuth, adminController.getUsersList);
 app.post('/api/admin/users/:id/toggle-block', adminAuth, adminController.toggleUserBlock);
 app.get('/api/admin/orders', adminAuth, async (req, res) => {
   try {
-    const { dbData } = require('./db');
-    const allOrders = dbData.orders || [];
-    const allUsers = dbData.users || [];
-    const allBanks = dbData.bank_accounts || [];
+    const allOrders = await query.all('SELECT * FROM orders ORDER BY id DESC') || [];
+    const allUsers = await query.all('SELECT id, uid, mobile, username FROM users') || [];
+    const allBanks = await query.all('SELECT * FROM bank_accounts') || [];
 
     const userMap = new Map();
     allUsers.forEach(u => userMap.set(Number(u.id), u));
@@ -706,8 +688,7 @@ app.delete('/api/admin/messages/:id', adminAuth, async (req, res) => {
 // Commission Slabs CRUD Management Routes
 app.get('/api/admin/commission-slabs', adminAuth, async (req, res) => {
   try {
-    loadDb();
-    const slabs = dbData.commission_slabs || [];
+    const slabs = await query.all('SELECT * FROM commission_slabs ORDER BY min_amount ASC') || [];
     return res.json({ success: true, slabs });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -720,19 +701,17 @@ app.post('/api/admin/commission-slabs', adminAuth, async (req, res) => {
     if (min_amount === undefined || max_amount === undefined || commission_percent === undefined) {
       return res.status(400).json({ error: 'min_amount, max_amount, and commission_percent are required.' });
     }
-    loadDb();
-    dbData.commission_slabs = dbData.commission_slabs || [];
-    idTrackers.commission_slabs = (idTrackers.commission_slabs || 0) + 1;
-    const newId = idTrackers.commission_slabs;
+    const result = await query.run(
+      'INSERT INTO commission_slabs (min_amount, max_amount, commission_percent, flat_bonus) VALUES (?, ?, ?, ?)',
+      [Number(min_amount), Number(max_amount), Number(commission_percent), Number(flat_bonus || 0)]
+    );
     const newSlab = {
-      id: newId,
+      id: result.insertId || result.lastID,
       min_amount: Number(min_amount),
       max_amount: Number(max_amount),
       commission_percent: Number(commission_percent),
       flat_bonus: Number(flat_bonus || 0)
     };
-    dbData.commission_slabs.push(newSlab);
-    await saveDbAsync();
     return res.json({ success: true, slab: newSlab, message: 'Commission slab added successfully!' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -743,21 +722,15 @@ app.put('/api/admin/commission-slabs/:id', adminAuth, async (req, res) => {
   try {
     const { min_amount, max_amount, commission_percent, flat_bonus } = req.body;
     const id = Number(req.params.id);
-    loadDb();
-    dbData.commission_slabs = dbData.commission_slabs || [];
-    const idx = dbData.commission_slabs.findIndex(s => s.id === id);
-    if (idx === -1) {
-      return res.status(404).json({ error: 'Commission slab not found.' });
-    }
-    dbData.commission_slabs[idx] = {
-      ...dbData.commission_slabs[idx],
-      min_amount: Number(min_amount),
-      max_amount: Number(max_amount),
-      commission_percent: Number(commission_percent),
-      flat_bonus: Number(flat_bonus || 0)
-    };
-    await saveDbAsync();
-    return res.json({ success: true, slab: dbData.commission_slabs[idx], message: 'Commission slab updated successfully!' });
+    await query.run(
+      'UPDATE commission_slabs SET min_amount = ?, max_amount = ?, commission_percent = ?, flat_bonus = ? WHERE id = ?',
+      [Number(min_amount), Number(max_amount), Number(commission_percent), Number(flat_bonus || 0), id]
+    );
+    return res.json({
+      success: true,
+      slab: { id, min_amount: Number(min_amount), max_amount: Number(max_amount), commission_percent: Number(commission_percent), flat_bonus: Number(flat_bonus || 0) },
+      message: 'Commission slab updated successfully!'
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -766,10 +739,7 @@ app.put('/api/admin/commission-slabs/:id', adminAuth, async (req, res) => {
 app.delete('/api/admin/commission-slabs/:id', adminAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    loadDb();
-    dbData.commission_slabs = dbData.commission_slabs || [];
-    dbData.commission_slabs = dbData.commission_slabs.filter(s => s.id !== id);
-    await saveDbAsync();
+    await query.run('DELETE FROM commission_slabs WHERE id = ?', [id]);
     return res.json({ success: true, message: 'Commission slab deleted successfully!' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -779,12 +749,7 @@ app.delete('/api/admin/commission-slabs/:id', adminAuth, async (req, res) => {
 // Commission & System Settings Routes
 app.get('/api/admin/settings', adminAuth, async (req, res) => {
   try {
-    loadDb();
-    const config = await query.get('SELECT * FROM settings LIMIT 1');
-    const fullConfig = {
-      ...(config || {}),
-      ...(dbData.settings || {})
-    };
+    const fullConfig = await getSettingsMap();
     return res.json({ success: true, settings: fullConfig });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -793,32 +758,22 @@ app.get('/api/admin/settings', adminAuth, async (req, res) => {
 
 app.post('/api/admin/settings', adminAuth, async (req, res) => {
   try {
-    const { level1_commission, level2_commission, level3_commission, min_plan_amount, max_plan_amount, telegram_link, winpey_api_key, winpey_api_secret, payment_mode, upi_ids, deposit_commission_percent, user_commission_percent, commission_percent } = req.body;
-    loadDb();
-    dbData.settings = dbData.settings || {};
-    dbData.settings.level1_commission = Number(level1_commission || 0);
-    dbData.settings.level2_commission = Number(level2_commission || 0);
-    dbData.settings.level3_commission = Number(level3_commission || 0);
-    dbData.settings.min_plan_amount = Number(min_plan_amount ?? 200);
-    dbData.settings.max_plan_amount = Number(max_plan_amount ?? 100000);
+    const {
+      level1_commission,
+      level2_commission,
+      level3_commission,
+      min_plan_amount,
+      max_plan_amount,
+      telegram_link,
+      winpey_api_key,
+      winpey_api_secret,
+      payment_mode,
+      upi_ids,
+      deposit_commission_percent,
+      user_commission_percent,
+      commission_percent
+    } = req.body;
 
-    const depPct = deposit_commission_percent ?? user_commission_percent ?? commission_percent;
-    if (depPct !== undefined && depPct !== null && depPct !== '') {
-      const pVal = Number(depPct);
-      dbData.settings.deposit_commission_percent = pVal;
-      dbData.settings.user_commission_percent = pVal;
-      dbData.settings.commission_percent = pVal;
-
-      if (dbData.commission_slabs && dbData.commission_slabs.length > 0) {
-        dbData.commission_slabs.forEach(s => {
-          s.commission_percent = pVal;
-        });
-      } else {
-        dbData.commission_slabs = [
-          { id: 1, min_amount: 1, max_amount: 1000000, commission_percent: pVal, flat_bonus: 0 }
-        ];
-      }
-    }
     let normalizedLink = telegram_link ? String(telegram_link).trim() : "https://t.me/TpayX";
     let normalizedUsername = "";
     if (normalizedLink.startsWith("@")) {
@@ -831,24 +786,33 @@ app.post('/api/admin/settings', adminAuth, async (req, res) => {
       normalizedUsername = "@" + normalizedLink;
       normalizedLink = `https://t.me/${normalizedLink}`;
     }
-    dbData.settings.telegram_link = normalizedLink;
-    dbData.settings.telegram_username = normalizedUsername;
-    dbData.settings.winpey_api_key = winpey_api_key || "488b923c-2b03-465e-b9df-55d018124e0c";
-    dbData.settings.winpey_api_secret = winpey_api_secret || "fc4a56a2439f47c19213c747ee5693c6";
-    dbData.settings.payment_mode = payment_mode || "gateway";
-    dbData.settings.upi_ids = upi_ids || "";
-    await saveDbAsync();
 
-    await query.run('UPDATE settings SET level1_commission = ?, level2_commission = ?, level3_commission = ?, telegram_link = ?, winpey_api_key = ?, winpey_api_secret = ?, payment_mode = ?, upi_ids = ?', [
-      Number(level1_commission || 0),
-      Number(level2_commission || 0),
-      Number(level3_commission || 0),
-      normalizedLink,
-      winpey_api_key || "488b923c-2b03-465e-b9df-55d018124e0c",
-      winpey_api_secret || "fc4a56a2439f47c19213c747ee5693c6",
-      payment_mode || "gateway",
-      upi_ids || ""
-    ]);
+    const settingsToSave = {
+      level1_commission: Number(level1_commission || 0),
+      level2_commission: Number(level2_commission || 0),
+      level3_commission: Number(level3_commission || 0),
+      min_plan_amount: Number(min_plan_amount ?? 200),
+      max_plan_amount: Number(max_plan_amount ?? 100000),
+      telegram_link: normalizedLink,
+      telegram_username: normalizedUsername,
+      winpey_api_key: winpey_api_key || "488b923c-2b03-465e-b9df-55d018124e0c",
+      winpey_api_secret: winpey_api_secret || "fc4a56a2439f47c19213c747ee5693c6",
+      payment_mode: payment_mode || "gateway",
+      upi_ids: upi_ids || ""
+    };
+
+    const depPct = deposit_commission_percent ?? user_commission_percent ?? commission_percent;
+    if (depPct !== undefined && depPct !== null && depPct !== '') {
+      const pVal = Number(depPct);
+      settingsToSave.deposit_commission_percent = pVal;
+      settingsToSave.user_commission_percent = pVal;
+      settingsToSave.commission_percent = pVal;
+    }
+
+    for (const [key, val] of Object.entries(settingsToSave)) {
+      await saveSettingValue(key, val);
+    }
+
     return res.json({ success: true, message: 'Settings updated successfully!' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -934,44 +898,27 @@ app.get('/api/admin/users/:userId/withdrawals', adminAuth, async (req, res) => {
 // Comprehensive User Details Endpoint for Admin Panel
 app.get('/api/admin/users/:userId/details', adminAuth, async (req, res) => {
   try {
-    loadDb();
     const userId = Number(req.params.userId);
-    const user = (dbData.users || []).find(u => u.id === userId) || await query.get('SELECT * FROM users WHERE id = ?', [userId]);
+    const user = await query.get('SELECT * FROM users WHERE id = ?', [userId]);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     // 1. Bank Accounts
-    const sqliteBanks = await query.all('SELECT * FROM bank_accounts WHERE user_id = ? ORDER BY id DESC', [userId]);
-    const memBanks = (dbData.bank_accounts || []).filter(b => b.user_id == userId);
-    const bankAccounts = (sqliteBanks && sqliteBanks.length > 0) ? sqliteBanks : memBanks;
+    const bankAccounts = await query.all('SELECT * FROM bank_accounts WHERE user_id = ? ORDER BY id DESC', [userId]) || [];
 
     // 2. Deposit Orders
-    const sqliteDeposits = await query.all('SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 50', [userId]);
-    const memDeposits = (dbData.orders || []).filter(o => o.user_id == userId).slice(-50).reverse();
-    const deposits = (sqliteDeposits && sqliteDeposits.length > 0) ? sqliteDeposits : memDeposits;
+    const deposits = await query.all('SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 50', [userId]) || [];
 
     // 3. Withdrawal Records
-    const sqliteWithdrawals = await query.all('SELECT * FROM transactions WHERE user_id = ? AND type = "Withdraw" ORDER BY id DESC LIMIT 50', [userId]);
-    const memWithdrawals = (dbData.transactions || []).filter(t => t.user_id == userId && t.type === 'Withdraw').slice(-50).reverse();
-    const withdrawals = (sqliteWithdrawals && sqliteWithdrawals.length > 0) ? sqliteWithdrawals : memWithdrawals;
+    const withdrawals = await query.all('SELECT * FROM transactions WHERE user_id = ? AND type = "Withdraw" ORDER BY id DESC LIMIT 50', [userId]) || [];
 
     // 4. Downline Team Members
-    const inviteCode = user.invite_code || `tp${user.uid}`;
-    const sqliteTeam = await query.all('SELECT id, uid, username, mobile, inr_balance, bcoin_balance, created_at FROM users WHERE invited_by = ? ORDER BY id DESC', [inviteCode]);
-    const memTeam = (dbData.users || []).filter(u => u.invited_by === inviteCode || u.invited_by === user.uid || u.invited_by === String(user.id)).map(u => ({
-      id: u.id,
-      uid: u.uid,
-      username: u.username,
-      mobile: u.mobile,
-      inr_balance: u.inr_balance,
-      bcoin_balance: u.bcoin_balance,
-      created_at: u.created_at
-    }));
-    const team = (sqliteTeam && sqliteTeam.length > 0) ? sqliteTeam : memTeam;
+    const inviteCode = user.ref_code || user.invite_code || `tp${user.uid}`;
+    const team = await query.all('SELECT id, uid, username, mobile, inr_balance, bcoin_balance, created_at FROM users WHERE parent_id = ? ORDER BY id DESC', [userId]) || [];
 
     // 5. Active / Subscribed Plans
-    const plans = (dbData.orders || []).filter(o => o.user_id == userId && o.status === 'Completed').slice(-20).reverse();
+    const plans = await query.all('SELECT * FROM orders WHERE user_id = ? AND status = "Completed" ORDER BY id DESC LIMIT 20', [userId]) || [];
 
     return res.json({
       success: true,
@@ -986,7 +933,8 @@ app.get('/api/admin/users/:userId/details', adminAuth, async (req, res) => {
           total_earnings: Number(user.total_earnings || 0),
           today_profit: Number(user.today_profit || 0),
           invite_code: inviteCode,
-          invited_by: user.invited_by || 'None',
+          ref_code: inviteCode,
+          parent_id: user.parent_id,
           is_blocked: Boolean(user.is_blocked),
           created_at: user.created_at
         },
@@ -1004,11 +952,11 @@ app.get('/api/admin/users/:userId/details', adminAuth, async (req, res) => {
 });
 
 // Public Commission Slabs Endpoint
-app.get(['/api/commission-slabs', '/api/user/commission-slabs'], (req, res) => {
+app.get(['/api/commission-slabs', '/api/user/commission-slabs'], async (req, res) => {
   try {
-    loadDb();
-    const slabs = dbData.commission_slabs || [];
-    const globalPercent = dbData.settings?.deposit_commission_percent ?? dbData.settings?.user_commission_percent ?? dbData.settings?.commission_percent ?? 2.5;
+    const slabs = await query.all('SELECT * FROM commission_slabs ORDER BY min_amount ASC') || [];
+    const settings = await getSettingsMap();
+    const globalPercent = settings.deposit_commission_percent ?? settings.user_commission_percent ?? settings.commission_percent ?? 2.5;
     return res.json({
       success: true,
       global_percent: Number(globalPercent),

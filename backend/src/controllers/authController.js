@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { query, dbData, saveDb, saveDbAsync, loadDb, supabase } = require('../db');
+const { query, dbData, saveDb, saveDbAsync, loadDb } = require('../db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'TpayX_secret_jwt_key';
 
