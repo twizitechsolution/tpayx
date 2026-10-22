@@ -641,8 +641,44 @@ function loadDb() {
 }
 
 // Main query simulator
+// MySQL Database Pool for aaPanel / Local Server
+let mysqlPool = null;
+if (process.env.DB_NAME || process.env.DB_USER) {
+  try {
+    const mysql = require('mysql2/promise');
+    mysqlPool = mysql.createPool({
+      host: process.env.DB_HOST || '127.0.0.1',
+      port: parseInt(process.env.DB_PORT || '3306', 10),
+      user: process.env.DB_USER || 'root',
+      password: process.env.DB_PASSWORD || '',
+      database: process.env.DB_NAME || 'tpayx_db',
+      waitForConnections: true,
+      connectionLimit: 20,
+      queueLimit: 0,
+      decimalNumbers: true
+    });
+    console.log(`[Database] MySQL Connection Pool successfully initialized for '${process.env.DB_NAME}' on ${process.env.DB_HOST || '127.0.0.1'}`);
+  } catch (err) {
+    console.error('[Database] Failed to initialize MySQL Pool:', err.message);
+  }
+}
+
+function normalizeSql(sql) {
+  return sql.replace(/INSERT\s+OR\s+IGNORE/gi, 'INSERT IGNORE');
+}
+
 const query = {
   get: async (sql, params = []) => {
+    if (mysqlPool) {
+      try {
+        const [rows] = await mysqlPool.execute(normalizeSql(sql), params);
+        return rows && rows.length > 0 ? rows[0] : null;
+      } catch (err) {
+        console.error('[MySQL query.get error]:', err.message, 'SQL:', sql);
+        throw err;
+      }
+    }
+
     loadDb();
     const cleanSql = sql.replace(/\s+/g, ' ').trim();
 
@@ -803,6 +839,15 @@ const query = {
   },
 
   all: async (sql, params = []) => {
+    if (mysqlPool) {
+      try {
+        const [rows] = await mysqlPool.execute(normalizeSql(sql), params);
+        return rows || [];
+      } catch (err) {
+        console.error('[MySQL query.all error]:', err.message, 'SQL:', sql);
+        throw err;
+      }
+    }
     loadDb();
     const cleanSql = sql.replace(/\s+/g, ' ').trim();
 
@@ -931,6 +976,20 @@ const query = {
   },
 
   run: async (sql, params = []) => {
+    if (mysqlPool) {
+      try {
+        const [result] = await mysqlPool.execute(normalizeSql(sql), params);
+        return {
+          lastID: result.insertId,
+          insertId: result.insertId,
+          changes: result.affectedRows,
+          affectedRows: result.affectedRows
+        };
+      } catch (err) {
+        console.error('[MySQL query.run error]:', err.message, 'SQL:', sql);
+        throw err;
+      }
+    }
     loadDb();
     const cleanSql = sql.replace(/\s+/g, ' ').trim();
 
