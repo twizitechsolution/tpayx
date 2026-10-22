@@ -1,5 +1,5 @@
 -- TpayX Production Database Seed Data
--- Generated on 2026-10-22T07:36:53.775Z
+-- Generated on 2026-10-22T09:35:27.145Z
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -95,7 +95,7 @@ INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, 
 INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `description`, `created_at`) VALUES (50, 1, 'Deposit', 33358, 427638.1, 'Deposit principal for Order gn20261018185411182F6B', '2026-10-18 18:55:08') ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
 INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `description`, `created_at`) VALUES (51, 1, 'Commission', 1167.53, 428805.63, 'Interest bonus for Order gn20261018185411182F6B', '2026-10-18 18:55:08') ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
 INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `description`, `created_at`) VALUES (52, 1004, 'Withdraw', -33358, 88889.87999999999, 'Bank: State Bank of India, A/C: 5776666566, Holder: Ydyuiji, UTR: 255855588, TXID: MWD_1792349708768, Note: P2P match withdrawal debit of ₹33358.00', '2026-10-18 18:55:08') ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
-INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `description`, `created_at`) VALUES (53, 1008, 20, Completed Add Support task, 0, NULL, '2026-10-18 19:13:23') ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
+INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `description`, `created_at`) VALUES (53, 1008, 'Task', 20, 0, 'Completed Add Support task', '2026-10-18 19:13:23') ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
 INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `description`, `created_at`) VALUES (54, 1008, 'Deposit', 3698, 3718, 'Deposit principal for Order gn202610181913528816AE', '2026-10-18 19:19:15') ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
 INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `description`, `created_at`) VALUES (55, 1008, 'Commission', 92.45, 3810.45, 'Interest bonus for Order gn202610181913528816AE', '2026-10-18 19:19:15') ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
 INSERT INTO `transactions` (`id`, `user_id`, `type`, `amount`, `balance_after`, `description`, `created_at`) VALUES (56, 1004, 'Withdraw', -3698, 85191.87999999999, 'Bank: State Bank of India, A/C: 5776666566, Holder: Ydyuiji, UTR: 1588786688, TXID: MWD_1792351155388, Note: P2P match withdrawal debit of ₹3698.00', '2026-10-18 19:19:15') ON DUPLICATE KEY UPDATE `id`=VALUES(`id`);
