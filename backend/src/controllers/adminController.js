@@ -190,20 +190,26 @@ function buildOrdersList(dbData) {
     const u = userMap.get(Number(order.user_id)) || {};
     const recId = order.receiver_id;
     let receiver_mobile = 'N/A';
-    let receiver_bank = null;
+    let receiver_bank = 'HDFC Bank';
+    let receiver_account = 'N/A';
+    let receiver_bank_details = null;
 
     if (recId && recId != 1) {
       const receiverUser = userMap.get(Number(recId));
       const bankAcc = allBanks.find(b => b.user_id == recId && b.status === 'Active') ||
                       allBanks.find(b => b.user_id == recId);
       receiver_mobile = receiverUser ? receiverUser.mobile : 'N/A';
-      receiver_bank = bankAcc ? {
-        bank_name: bankAcc.bank_name,
-        account_holder: bankAcc.account_holder,
-        account_number: bankAcc.account_number,
-        ifsc_code: bankAcc.ifsc_code || bankAcc.ifsc || 'N/A',
-        upi_id: bankAcc.upi_id || 'N/A'
-      } : null;
+      if (bankAcc) {
+        receiver_bank = bankAcc.bank_name || 'HDFC Bank';
+        receiver_account = bankAcc.account_number || 'N/A';
+        receiver_bank_details = {
+          bank_name: bankAcc.bank_name,
+          account_holder: bankAcc.account_holder,
+          account_number: bankAcc.account_number,
+          ifsc_code: bankAcc.ifsc_code || bankAcc.ifsc || 'N/A',
+          upi_id: bankAcc.upi_id || 'N/A'
+        };
+      }
     }
 
     return {
@@ -211,7 +217,9 @@ function buildOrdersList(dbData) {
       user_uid: u.uid || `UID_${order.user_id}`,
       user_mobile: u.mobile || 'N/A',
       receiver_mobile,
-      receiver_bank
+      receiver_bank,
+      receiver_account,
+      receiver_bank_details
     };
   }).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 }

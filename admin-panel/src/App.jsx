@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import SliderManager from './components/SliderManager';
@@ -766,6 +766,12 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
   const [loading, setLoading] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [userSearch, setUserSearch] = useState('');
+  const [userStatusFilter, setUserStatusFilter] = useState('ALL');
+  const [userPage, setUserPage] = useState(1);
+
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
+  const [orderPage, setOrderPage] = useState(1);
 
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -849,6 +855,13 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
     if (token) {
       const hasCached = (users.length > 0 || orders.length > 0 || stats.totalUsers > 0);
       fetchData(hasCached);
+
+      // Real-time background sync with MySQL database every 6 seconds
+      const pollInterval = setInterval(() => {
+        fetchData(true);
+      }, 6000);
+
+      return () => clearInterval(pollInterval);
     }
   }, [token]);
 
@@ -1004,15 +1017,59 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
     }
   };
 
-  // Filter users by search safely
-  const filteredUsers = (users || []).filter(u => {
-    if (!u) return false;
-    const q = (userSearch || '').toLowerCase();
-    const uid = String(u.uid || '').toLowerCase();
-    const username = String(u.username || '').toLowerCase();
-    const mobile = String(u.mobile || '');
-    return uid.includes(q) || username.includes(q) || mobile.includes(q);
-  });
+  // Filter users by search and status safely (10 per page)
+  const filteredUsers = useMemo(() => {
+    return (users || []).filter(u => {
+      if (!u) return false;
+      const statusMatch = userStatusFilter === 'ALL'
+        ? true
+        : userStatusFilter === 'ACTIVE'
+          ? !u.is_blocked
+          : !!u.is_blocked;
+      if (!statusMatch) return false;
+
+      if (!userSearch.trim()) return true;
+      const q = (userSearch || '').toLowerCase();
+      const uid = String(u.uid || '').toLowerCase();
+      const username = String(u.username || '').toLowerCase();
+      const mobile = String(u.mobile || '');
+      return uid.includes(q) || username.includes(q) || mobile.includes(q);
+    });
+  }, [users, userSearch, userStatusFilter]);
+
+  const usersPerPage = 10;
+  const totalUserPages = Math.max(1, Math.ceil(filteredUsers.length / usersPerPage));
+  const currentUserPage = Math.min(Math.max(1, userPage), totalUserPages);
+  const paginatedUsers = filteredUsers.slice((currentUserPage - 1) * usersPerPage, currentUserPage * usersPerPage);
+
+  // Orders filtering and pagination (10 per page)
+  const filteredOrders = useMemo(() => {
+    return (orders || []).filter(order => {
+      if (!order) return false;
+      const status = (order.status || '').toLowerCase();
+      const filter = orderStatusFilter.toLowerCase();
+      const statusMatch = orderStatusFilter === 'ALL' || status === filter;
+      if (!statusMatch) return false;
+
+      if (!orderSearch.trim()) return true;
+      const q = orderSearch.toLowerCase();
+      const orderId = String(order.order_id || '').toLowerCase();
+      const mobile = String(order.user_mobile || '').toLowerCase();
+      const uid = String(order.user_uid || '').toLowerCase();
+      const utr = String(order.utr || '').toLowerCase();
+      const receiverName = String(order.receiver_name || '').toLowerCase();
+      const receiverMob = String(order.receiver_mobile || '').toLowerCase();
+      const receiverBank = typeof order.receiver_bank === 'object' && order.receiver_bank !== null 
+        ? String(order.receiver_bank.bank_name || '').toLowerCase() 
+        : String(order.receiver_bank || '').toLowerCase();
+      return orderId.includes(q) || mobile.includes(q) || uid.includes(q) || utr.includes(q) || receiverName.includes(q) || receiverMob.includes(q) || receiverBank.includes(q);
+    });
+  }, [orders, orderSearch, orderStatusFilter]);
+
+  const ordersPerPage = 10;
+  const totalOrderPages = Math.max(1, Math.ceil(filteredOrders.length / ordersPerPage));
+  const currentOrderPage = Math.min(Math.max(1, orderPage), totalOrderPages);
+  const paginatedOrders = filteredOrders.slice((currentOrderPage - 1) * ordersPerPage, currentOrderPage * ordersPerPage);
 
   // SVG Trend graph coordinates calculations safely
   const chartData = Array.isArray(stats?.chartData) ? stats.chartData : [];
@@ -1386,19 +1443,53 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
       {/* Orders View */}
       {!loading && activeTab === 'orders' && (
         <div className={`border rounded-[1.8rem] overflow-hidden shadow-md ${cardStyle}`}>
-          <div className={`p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${theme === 'dark' ? 'border-[#1b1c34]/50' : 'border-slate-100'}`}>
+          <div className={`p-6 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 ${theme === 'dark' ? 'border-[#1b1c34]/50' : 'border-slate-100'}`}>
             <div>
               <span className={`text-sm font-bold uppercase tracking-wide ${titleColor}`}>Transactions Queue</span>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Pending payments awaiting verification</p>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Pending payments awaiting verification • {filteredOrders.length} Total Orders</p>
             </div>
-            <button
-              onClick={fetchData}
-              className={`text-[10px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-xl border flex items-center justify-center gap-1.5 transition-all active:scale-95 w-fit ${
-                theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] text-slate-300 hover:text-white' : 'bg-slate-55 border-slate-200 text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <i className="fas fa-sync-alt" /> Sync Queue
-            </button>
+            
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Search Bar */}
+              <div className="relative">
+                <input
+                  type="text"
+                  value={orderSearch}
+                  onChange={(e) => { setOrderSearch(e.target.value); setOrderPage(1); }}
+                  placeholder="Search ID, Mobile, UID, UTR..."
+                  className={`border rounded-xl pl-8 pr-4 py-2 text-xs font-semibold focus:outline-none w-56 ${
+                    theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] text-white placeholder-slate-600 focus:border-violet-500' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-violet-400'
+                  }`}
+                />
+                <i className="fas fa-search absolute left-3 top-3 text-[10px] text-slate-400" />
+              </div>
+
+              {/* Status Filter Pills */}
+              <div className="flex items-center gap-1 bg-[#141528] p-1 rounded-xl border border-[#1b1c34]">
+                {['ALL', 'Confirming', 'Admin Review', 'Pending', 'Completed', 'Canceled'].map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => { setOrderStatusFilter(st); setOrderPage(1); }}
+                    className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                      orderStatusFilter === st
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={fetchData}
+                className={`text-[10px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-xl border flex items-center justify-center gap-1.5 transition-all active:scale-95 w-fit ${
+                  theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] text-slate-300 hover:text-white' : 'bg-slate-55 border-slate-200 text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <i className="fas fa-sync-alt" /> Sync Queue
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1416,14 +1507,14 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1b1c34]/40">
-                {!Array.isArray(orders) || orders.length === 0 ? (
+                {!Array.isArray(paginatedOrders) || paginatedOrders.length === 0 ? (
                   <tr>
                     <td colSpan="8" className="text-center py-12 text-slate-500 font-bold uppercase tracking-wider">
-                      No deposit orders found in database.
+                      No deposit orders match the filter.
                     </td>
                   </tr>
                 ) : (
-                  orders.map((order, idx) => {
+                  paginatedOrders.map((order, idx) => {
                     if (!order) return null;
                     const orderId = order.order_id || `ORD_${idx}`;
                     const createdDateStr = (() => {
@@ -1435,6 +1526,13 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
                         return 'N/A';
                       }
                     })();
+
+                    const bankName = typeof order.receiver_bank === 'object' && order.receiver_bank !== null
+                      ? (order.receiver_bank.bank_name || 'HDFC Bank')
+                      : (order.receiver_bank || 'HDFC Bank');
+                    const accNumber = typeof order.receiver_bank === 'object' && order.receiver_bank !== null
+                      ? (order.receiver_bank.account_number || order.receiver_account || 'N/A')
+                      : (order.receiver_account || 'N/A');
 
                     return (
                       <tr key={orderId} className={`transition-colors ${theme === 'dark' ? 'hover:bg-[#181931]/30' : 'hover:bg-slate-50'}`}>
@@ -1463,7 +1561,7 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
                             <span className="font-bold text-emerald-400 block">{order.receiver_name || 'Tushar Admin'}</span>
                             <span className="text-slate-400 font-mono block text-[10px]">Mob: {order.receiver_mobile || '8763527330'}</span>
                             <span className="text-slate-500 text-[10px] block leading-tight">
-                              {order.receiver_bank || 'HDFC Bank'} (A/C: {order.receiver_account || 'N/A'})
+                              {bankName} (A/C: {accNumber})
                             </span>
                           </div>
                         </td>
@@ -1517,6 +1615,41 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
               </tbody>
             </table>
           </div>
+
+          {/* Orders Pagination Controls */}
+          {filteredOrders.length > 0 && (
+            <div className={`p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${theme === 'dark' ? 'border-[#1b1c34]/50 text-slate-400' : 'border-slate-100 text-slate-600'}`}>
+              <div className="font-semibold text-[11px]">
+                Showing {Math.min((currentOrderPage - 1) * ordersPerPage + 1, filteredOrders.length)} to {Math.min(currentOrderPage * ordersPerPage, filteredOrders.length)} of {filteredOrders.length} orders
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={currentOrderPage <= 1}
+                  onClick={() => setOrderPage(p => Math.max(1, p - 1))}
+                  className={`px-3 py-1.5 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] hover:text-white' : 'bg-slate-50 border-slate-200 hover:text-slate-900'
+                  }`}
+                >
+                  <i className="fas fa-chevron-left mr-1" /> Prev
+                </button>
+
+                <span className="font-bold px-2 text-[11px]">
+                  Page {currentOrderPage} of {totalOrderPages}
+                </span>
+
+                <button
+                  disabled={currentOrderPage >= totalOrderPages}
+                  onClick={() => setOrderPage(p => Math.min(totalOrderPages, p + 1))}
+                  className={`px-3 py-1.5 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] hover:text-white' : 'bg-slate-50 border-slate-200 hover:text-slate-900'
+                  }`}
+                >
+                  Next <i className="fas fa-chevron-right ml-1" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1526,18 +1659,40 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
           <div className={`p-6 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 ${theme === 'dark' ? 'border-[#1b1c34]/50' : 'border-slate-100'}`}>
             <div>
               <span className={`text-sm font-bold uppercase tracking-wide ${titleColor}`}>Users Directory</span>
-              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Directory of registered user wallets</p>
+              <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">Directory of registered user wallets • {filteredUsers.length} Users</p>
             </div>
-            <div className="flex items-center gap-3">
-              <input
-                type="text"
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="Search UID, Name or Mobile..."
-                className={`border rounded-xl px-4 py-2 text-xs font-semibold focus:outline-none w-48 ${
-                  theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] text-white placeholder-slate-600 focus:border-violet-500' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-violet-400'
-                }`}
-              />
+            
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Status Filter Pills */}
+              <div className="flex items-center gap-1 bg-[#141528] p-1 rounded-xl border border-[#1b1c34]">
+                {['ALL', 'ACTIVE', 'BLOCKED'].map((st) => (
+                  <button
+                    key={st}
+                    onClick={() => { setUserStatusFilter(st); setUserPage(1); }}
+                    className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                      userStatusFilter === st
+                        ? 'bg-violet-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {st}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative">
+                <input
+                  type="text"
+                  value={userSearch}
+                  onChange={(e) => { setUserSearch(e.target.value); setUserPage(1); }}
+                  placeholder="Search UID, Name or Mobile..."
+                  className={`border rounded-xl pl-8 pr-4 py-2 text-xs font-semibold focus:outline-none w-52 ${
+                    theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] text-white placeholder-slate-600 focus:border-violet-500' : 'bg-slate-50 border-slate-200 text-slate-800 placeholder-slate-400 focus:border-violet-400'
+                  }`}
+                />
+                <i className="fas fa-search absolute left-3 top-3 text-[10px] text-slate-400" />
+              </div>
+
               <button
                 onClick={fetchData}
                 className={`text-[10px] font-bold uppercase tracking-wider px-3.5 py-2 rounded-xl border flex items-center gap-1.5 transition-all active:scale-95 ${
@@ -1568,14 +1723,14 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#1b1c34]/40">
-                {filteredUsers.length === 0 ? (
+                {paginatedUsers.length === 0 ? (
                   <tr>
                     <td colSpan="12" className="text-center py-12 text-slate-500 font-bold uppercase tracking-wider">
                       No user records match the criteria.
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map(u => (
+                  paginatedUsers.map(u => (
                     <tr key={u.id} className={`transition-colors ${theme === 'dark' ? 'hover:bg-[#181931]/30' : 'hover:bg-slate-50'}`}>
                       <td className="px-6 py-4">
                         <span className={`font-semibold block font-mono text-[12px] ${theme === 'dark' ? 'text-slate-200' : 'text-slate-700'}`}>{u.uid}</span>
@@ -1665,6 +1820,41 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
               </tbody>
             </table>
           </div>
+
+          {/* Users Pagination Controls */}
+          {filteredUsers.length > 0 && (
+            <div className={`p-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3 text-xs ${theme === 'dark' ? 'border-[#1b1c34]/50 text-slate-400' : 'border-slate-100 text-slate-600'}`}>
+              <div className="font-semibold text-[11px]">
+                Showing {Math.min((currentUserPage - 1) * usersPerPage + 1, filteredUsers.length)} to {Math.min(currentUserPage * usersPerPage, filteredUsers.length)} of {filteredUsers.length} users
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  disabled={currentUserPage <= 1}
+                  onClick={() => setUserPage(p => Math.max(1, p - 1))}
+                  className={`px-3 py-1.5 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] hover:text-white' : 'bg-slate-50 border-slate-200 hover:text-slate-900'
+                  }`}
+                >
+                  <i className="fas fa-chevron-left mr-1" /> Prev
+                </button>
+
+                <span className="font-bold px-2 text-[11px]">
+                  Page {currentUserPage} of {totalUserPages}
+                </span>
+
+                <button
+                  disabled={currentUserPage >= totalUserPages}
+                  onClick={() => setUserPage(p => Math.min(totalUserPages, p + 1))}
+                  className={`px-3 py-1.5 rounded-lg border font-bold text-[10px] uppercase tracking-wider transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+                    theme === 'dark' ? 'bg-[#181931] border-[#1b1c34] hover:text-white' : 'bg-slate-50 border-slate-200 hover:text-slate-900'
+                  }`}
+                >
+                  Next <i className="fas fa-chevron-right ml-1" />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Withdrawal Debit Modal */}
           {showWithdrawModal && selectedUserForWithdraw && (
