@@ -10,7 +10,7 @@ try {
 
 const express = require('express');
 const cors = require('cors');
-const { initDb, query, dbData, idTrackers, saveDb, saveDbAsync, getPendingSync, loadDb, syncDbFromMysql, getSettingsMap, saveSettingValue, getBonusForAmount, getBonusSlabLabelForAmount, isSupabaseConnected, isHydratedStatus, getLocalVersion } = require('./db');
+const { initDb, query, mysqlPool, dbData, idTrackers, saveDb, saveDbAsync, getPendingSync, loadDb, syncDbFromMysql, getSettingsMap, saveSettingValue, getBonusForAmount, getBonusSlabLabelForAmount, isSupabaseConnected, isHydratedStatus, getLocalVersion } = require('./db');
 
 // Controllers
 const authController = require('./controllers/authController');
@@ -61,36 +61,7 @@ app.use(async (req, res, next) => {
   next();
 });
 
-// Serverless Auto-Flush Middleware: Guarantees no HTTP mutation response closes before Supabase sync completes
-app.use((req, res, next) => {
-  const originalJson = res.json.bind(res);
-  const originalSend = res.send.bind(res);
-
-  let isFlushed = false;
-  const flushAndRespond = async (fn, ...args) => {
-    if (isFlushed) return fn(...args);
-    isFlushed = true;
-    try {
-      if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-        const pending = getPendingSync();
-        if (pending) {
-          await Promise.race([
-            pending,
-            new Promise(resolve => setTimeout(resolve, 5000))
-          ]);
-        }
-      }
-    } catch (err) {
-      console.warn('[Auto-Flush Middleware Warning]:', err.message);
-    }
-    return fn(...args);
-  };
-
-  res.json = (...args) => flushAndRespond(originalJson, ...args);
-  res.send = (...args) => flushAndRespond(originalSend, ...args);
-  next();
-});
-
+// Middleware for instant responses (No artificial delay)
 const fs = require('fs');
 
 // Static serving for uploaded screenshots/files & static public assets
@@ -157,15 +128,28 @@ app.get('/', (req, res) => {
   return sendLandingPage(req, res);
 });
 
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
+  let mysqlStatus = 'unknown';
+  let mysqlError = null;
+  let userCount = 0;
+  try {
+    const rows = await query.all('SELECT id, uid, mobile FROM users');
+    userCount = rows ? rows.length : 0;
+    mysqlStatus = 'connected';
+  } catch (e) {
+    mysqlStatus = 'error';
+    mysqlError = e.message;
+  }
   return res.json({
     success: true,
     status: 'OK',
     timestamp: new Date().toISOString(),
+    mysqlStatus,
+    mysqlError,
+    userCount,
     supabaseConnected: isSupabaseConnected(),
     isHydrated: isHydratedStatus(),
-    version: getLocalVersion(),
-    user1_bcoin: dbData.users.find(u => u.id === 1)?.bcoin_balance
+    version: getLocalVersion()
   });
 });
 
@@ -301,7 +285,17 @@ app.get('/api/products', async (req, res) => {
     const maxPlanAmount = Number(dbData.settings?.max_plan_amount ?? 100000);
     
     // Start with all standard database products
-    let productsList = [...dbData.products];
+    let productsList = [];
+    try {
+      const dbProds = await query.all('SELECT * FROM products');
+      if (Array.isArray(dbProds) && dbProds.length > 0) {
+        productsList = [...dbProds];
+      } else if (Array.isArray(dbData.products)) {
+        productsList = [...dbData.products];
+      }
+    } catch (e) {
+      productsList = Array.isArray(dbData.products) ? [...dbData.products] : [];
+    }
     
     // 1. Add dynamic P2P products generated from active pending withdrawals
     const pendingWithdrawals = (dbData.withdrawals || [])
