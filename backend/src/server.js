@@ -1025,40 +1025,31 @@ app.post('/api/withdrawals', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Minimum withdrawal amount is ₹200' });
     }
 
-    loadDb();
-    
     // Check if user has active bank details
-    const bank = dbData.bank_accounts.find(b => b.id == bankAccountId && b.user_id == userId && b.status === 'Active');
+    const bank = await query.get('SELECT * FROM bank_accounts WHERE id = ? AND user_id = ? AND status = "Active"', [bankAccountId, userId]);
     if (!bank) {
       return res.status(400).json({ error: 'Please select an active bank account' });
     }
 
-    const user = dbData.users.find(u => u.id == userId);
+    const user = await query.get('SELECT * FROM users WHERE id = ?', [userId]);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
     // Verify balance availability (sum up existing pending withdrawals)
-    const pendingTotal = dbData.withdrawals
-      .filter(w => w.user_id == userId && w.status === 'Pending')
-      .reduce((sum, w) => sum + w.amount_pending, 0);
+    const pendingRes = await query.get('SELECT SUM(amount_pending) as total FROM withdrawals WHERE user_id = ? AND status = "Pending"', [userId]);
+    const pendingTotal = Number(pendingRes?.total || 0);
 
     if (user.bcoin_balance < pendingTotal + amtNum) {
       return res.status(400).json({ error: 'Insufficient balance. You already have pending withdrawals matching your balance.' });
     }
 
-    const newId = ++idTrackers.withdrawals;
-    dbData.withdrawals.push({
-      id: newId,
-      user_id: userId,
-      amount: amtNum,
-      amount_pending: amtNum,
-      status: 'Pending',
-      bank_account_id: bankAccountId,
-      created_at: new Date().toISOString()
-    });
-    
-    await saveDbAsync();
+    await query.run('INSERT INTO withdrawals (user_id, amount, amount_pending, bank_account_id, status) VALUES (?, ?, ?, ?, "Pending")', [
+      userId,
+      amtNum,
+      amtNum,
+      bankAccountId
+    ]);
 
     return res.json({ success: true, message: 'Withdrawal request registered successfully.' });
   } catch (err) {
@@ -1091,56 +1082,33 @@ app.post('/api/user/register-fcm', authMiddleware, async (req, res) => {
 // 3. Receiver fetches matched requests to confirm
 app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
   try {
-    loadDb();
     const userId = req.user.id;
-    const now = Date.now();
-    const requests = (dbData.orders || [])
-      .filter(o => o.receiver_id == userId && (o.status === 'Confirming' || o.status === 'Pending'))
-      .map(o => {
-        const buyer = (dbData.users || []).find(u => u.id == o.user_id) || {};
-        return {
-          id: o.id || o.order_id,
-          order_id: o.order_id,
-          amount: o.amount,
-          utr: o.utr,
-          screenshot_path: o.screenshot_path,
-          created_at: o.created_at,
-          timer_expiry: o.timer_expiry,
-          status: o.status,
-          buyer_username: buyer.username || 'Buyer',
-          buyer_uid: buyer.uid || '',
-          buyer_mobile: buyer.mobile || ''
-        };
-      });
+    const requestsRows = await query.all(
+      'SELECT o.*, u.username as buyer_username, u.uid as buyer_uid, u.mobile as buyer_mobile FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.seller_id = ? AND o.status IN ("Confirming", "Pending") ORDER BY o.id DESC',
+      [userId]
+    ) || [];
 
-    const completedSales = (dbData.orders || []).filter(o => o.receiver_id == userId && o.status === 'Completed');
-    const totalSalesCount = completedSales.length;
-    const totalSalesAmount = Number(completedSales.reduce((sum, o) => sum + Number(o.amount || 0), 0).toFixed(2));
+    const completedSalesRes = await query.get(
+      'SELECT COUNT(*) as count, SUM(amount) as total FROM orders WHERE seller_id = ? AND status = "Completed"',
+      [userId]
+    );
 
-    const history = (dbData.orders || [])
-      .filter(o => o.receiver_id == userId)
-      .slice(-20)
-      .reverse()
-      .map(o => ({
-        id: o.id,
-        order_id: o.order_id,
-        amount: o.amount,
-        utr: o.utr,
-        status: o.status,
-        created_at: o.created_at
-      }));
+    const historyRows = await query.all(
+      'SELECT id, order_id, amount, utr, status, created_at FROM orders WHERE seller_id = ? ORDER BY id DESC LIMIT 20',
+      [userId]
+    ) || [];
 
     return res.json({
       success: true,
-      requests,
+      requests: requestsRows,
       stats: {
-        total_sales_count: totalSalesCount,
-        total_sales_amount: totalSalesAmount,
-        pending_count: requests.length,
+        total_sales_count: completedSalesRes?.count || 0,
+        total_sales_amount: Number(completedSalesRes?.total || 0),
+        pending_count: requestsRows.length,
         usdt_rate: 110.00,
         rupee_rate_label: '2.5% + 6'
       },
-      history
+      history: historyRows
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1153,8 +1121,7 @@ app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => 
     const { orderId } = req.params;
     const userId = req.user.id;
 
-    loadDb();
-    const order = dbData.orders.find(o => (o.order_id === orderId || o.id == orderId) && o.receiver_id == userId);
+    const order = await query.get('SELECT * FROM orders WHERE (order_id = ? OR id = ?) AND (seller_id = ? OR receiver_id = ?)', [orderId, orderId, userId, userId]);
     if (!order) {
       return res.status(404).json({ error: 'Matched order not found' });
     }
@@ -1163,9 +1130,7 @@ app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => 
       return res.status(400).json({ error: 'Order is not in pending confirming status' });
     }
 
-    order.status = 'Admin Review';
-    await saveDbAsync();
-
+    await query.run('UPDATE orders SET status = "Admin Review" WHERE id = ?', [order.id]);
     return res.json({ success: true, message: 'Order rejected and sent to Admin Review.' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1178,8 +1143,7 @@ app.post('/api/orders/:orderId/p2p-receive', authMiddleware, async (req, res) =>
     const { orderId } = req.params;
     const userId = req.user.id;
 
-    loadDb();
-    const order = dbData.orders.find(o => (o.order_id === orderId || o.id == orderId) && o.receiver_id == userId);
+    const order = await query.get('SELECT * FROM orders WHERE (order_id = ? OR id = ?) AND (seller_id = ? OR receiver_id = ?)', [orderId, orderId, userId, userId]);
     if (!order) {
       return res.status(404).json({ error: 'Matched order not found' });
     }
@@ -1188,119 +1152,7 @@ app.post('/api/orders/:orderId/p2p-receive', authMiddleware, async (req, res) =>
       return res.status(400).json({ error: 'Order is not in pending confirming status' });
     }
 
-    const receiver = dbData.users.find(u => u.id == userId);
-    const buyer = dbData.users.find(u => u.id == order.user_id);
-
-    if (receiver.bcoin_balance < order.amount) {
-      return res.status(400).json({ error: 'Insufficient balance to confirm this debit.' });
-    }
-
-    // Deduct from receiver wallet
-    receiver.bcoin_balance = Math.max(0, receiver.bcoin_balance - order.amount);
-
-    // Complete order and credit buyer
-    order.status = 'Completed';
-    buyer.bcoin_balance += order.quota; // Credit buyer's T-Coin wallet with principal + bonus
-    buyer.total_earnings += order.expected_income;
-    buyer.today_profit += order.expected_income;
-
-    // Log the principal Deposit transaction for the buyer
-    const depositTxId = ++idTrackers.transactions;
-    dbData.transactions.push({
-      id: depositTxId,
-      user_id: buyer.id,
-      type: 'Deposit',
-      amount: order.amount,
-      balance_after: buyer.bcoin_balance - order.expected_income,
-      description: `Deposit principal for Order ${order.order_id}`,
-      created_at: new Date().toISOString()
-    });
-
-    // Log the Interest bonus Commission transaction for the buyer
-    const bonusTxId = ++idTrackers.transactions;
-    dbData.transactions.push({
-      id: bonusTxId,
-      user_id: buyer.id,
-      type: 'Commission',
-      amount: order.expected_income,
-      balance_after: buyer.bcoin_balance,
-      description: `Interest bonus for Order ${order.order_id}`,
-      created_at: new Date().toISOString()
-    });
-
-    // Log Withdraw transaction for receiver (sell history)
-    const newTxId = ++idTrackers.transactions;
-    const bank = dbData.bank_accounts.find(b => b.user_id == userId && b.status === 'Active') || { bank_name: 'Bank', account_number: 'N/A', account_holder: receiver.username };
-    const desc = `Bank: ${bank.bank_name}, A/C: ${bank.account_number}, Holder: ${bank.account_holder}, UTR: ${order.utr}, TXID: MWD_${Date.now()}, Note: P2P match withdrawal debit of ₹${order.amount.toFixed(2)}`;
-    dbData.transactions.push({
-      id: newTxId,
-      user_id: userId,
-      type: 'Withdraw',
-      amount: -order.amount,
-      balance_after: receiver.bcoin_balance,
-      description: desc,
-      created_at: new Date().toISOString()
-    });
-
-    // Check matched withdrawal request
-    if (order.withdrawal_id) {
-      const w = dbData.withdrawals.find(x => x.id == order.withdrawal_id);
-      if (w) {
-        if (w.amount_pending <= 0) {
-          w.status = 'Completed';
-        }
-      }
-    }
-
-    await saveDbAsync();
-
-    // Trigger dynamic commissions for buyer referral network
-    try {
-      const rates = dbData.settings || { level1_commission: 10, level2_commission: 5, level3_commission: 2 };
-      const commissionRates = [
-        Number(rates.level1_commission || 0) / 100,
-        Number(rates.level2_commission || 0) / 100,
-        Number(rates.level3_commission || 0) / 100
-      ];
-      let currentParentId = buyer.parent_id;
-
-      for (let level = 1; level <= 3; level++) {
-        if (!currentParentId) break;
-        const parent = dbData.users.find(u => u.id == currentParentId);
-        if (!parent) break;
-
-        // CRITICAL FIX: The seller fulfilling this sell request or the user itself MUST NEVER receive commission or bonus on withdrawal
-        if (parent.id == order.receiver_id || parent.id == userId || parent.id == buyer.id) {
-          currentParentId = parent.parent_id;
-          continue;
-        }
-
-        const rate = commissionRates[level - 1];
-        const commAmount = order.amount * rate; // calculated on principal purchase price
-
-        if (commAmount > 0) {
-          parent.bcoin_balance += commAmount;
-          parent.total_earnings += commAmount;
-          parent.today_profit += commAmount;
-
-          const commTxId = ++idTrackers.transactions;
-          dbData.transactions.push({
-            id: commTxId,
-            user_id: parent.id,
-            type: 'Commission',
-            amount: commAmount,
-            balance_after: parent.bcoin_balance,
-            description: `Level ${level} Commission of ₹${commAmount.toFixed(2)} from member UID: ${buyer.uid} (Order ID: ${order.order_id})`,
-            created_at: new Date().toISOString()
-          });
-        }
-        currentParentId = parent.parent_id;
-      }
-      await saveDbAsync();
-    } catch (err) {
-      console.error('Failed to distribute referral commission:', err);
-    }
-
+    await orderController.executeOrderApproval(order, order.utr || 'P2P_RECEIVE');
     return res.json({ success: true, message: 'Payment confirmed! Funds released and credited to buyer.' });
   } catch (err) {
     return res.status(500).json({ error: err.message });

@@ -11,24 +11,11 @@ try {
   require('dotenv').config();
 } catch (e) {}
 
-// Supabase has been permanently replaced by local aaPanel MySQL database
+// 100% Native aaPanel MySQL Database Architecture
+// All external databases (Supabase, Vercel) have been permanently purged
 const SUPABASE_URL = null;
 const SUPABASE_KEY = null;
 let supabase = null;
-
-
-const dataDir = process.env.VERCEL ? '/tmp' : path.join(__dirname, '../data');
-const dbPath = process.env.DATABASE_PATH || path.join(dataDir, 'database.json');
-
-// Ensure database parent directory exists
-const dbDir = path.dirname(dbPath);
-if (!fs.existsSync(dbDir)) {
-  try {
-    fs.mkdirSync(dbDir, { recursive: true });
-  } catch (e) {
-    console.error('Directory creation skipped/failed:', e.message);
-  }
-}
 
 // In-memory representation of our database tables
 let dbData = {
@@ -123,33 +110,17 @@ async function syncToSupabase() {
   return Promise.resolve();
 }
 
-// Save helpers
+// Save helpers (MySQL is the single source of truth; no synchronous disk writes)
 function saveDb() {
-  try {
-    const payload = JSON.stringify({ dbData, idTrackers }, null, 2);
-    fs.writeFileSync(dbPath, payload, 'utf8');
-    if (defaultSeedPath && defaultSeedPath !== dbPath && fs.existsSync(defaultSeedPath)) {
-      try { fs.writeFileSync(defaultSeedPath, payload, 'utf8'); } catch (e) {}
-    }
-  } catch (e) {
-    console.error('Error saving local database JSON file:', e);
-  }
-  if (supabase) {
-    currentSyncPromise = syncToSupabase().catch(err => console.error('[Supabase Async Sync Error]:', err.message));
-    return currentSyncPromise;
-  }
   return Promise.resolve();
 }
 
 async function saveDbAsync() {
-  saveDb();
-  if (supabase && currentSyncPromise) {
-    await currentSyncPromise;
-  }
+  return Promise.resolve();
 }
 
 function getPendingSync() {
-  return currentSyncPromise;
+  return Promise.resolve();
 }
 
 function repairMissingCommissions() {
@@ -383,115 +354,8 @@ function repairWithdrawalTransactionTypes() {
   }
 }
 
-const defaultSeedPath = path.join(__dirname, '../data/database.json');
-
 function loadDb() {
-  let targetPath = dbPath;
-  if (!fs.existsSync(targetPath) && fs.existsSync(defaultSeedPath)) {
-    try {
-      const data = fs.readFileSync(defaultSeedPath, 'utf8');
-      const targetDir = path.dirname(targetPath);
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
-      }
-      fs.writeFileSync(targetPath, data, 'utf8');
-      console.log('[loadDb] Initialized /tmp database.json from defaultSeedPath successfully.');
-    } catch (err) {
-      console.error('[loadDb] Seed copy failed:', err.message);
-      targetPath = defaultSeedPath;
-    }
-  }
-
-  if (fs.existsSync(targetPath)) {
-    try {
-      const parsed = JSON.parse(fs.readFileSync(targetPath, 'utf8'));
-      const activeOtps = dbData.otps || {};
-      const activeQuotes = dbData.quotes || {};
-
-      if (parsed.dbData) {
-        for (let key in dbData) delete dbData[key];
-        Object.assign(dbData, parsed.dbData);
-      }
-      if (parsed.idTrackers) {
-        for (let key in idTrackers) delete idTrackers[key];
-        Object.assign(idTrackers, parsed.idTrackers);
-      }
-
-      dbData.otps = { ...activeOtps, ...(dbData.otps || {}) };
-      dbData.quotes = { ...activeQuotes, ...(dbData.quotes || {}) };
-
-      // Ensure dynamic tables are initialized
-      dbData.commission_slabs = (dbData.commission_slabs && dbData.commission_slabs.length > 0) ? dbData.commission_slabs : [
-        { id: 1, min_amount: 500, max_amount: 14000, commission_percent: 2.5, flat_bonus: 0 },
-        { id: 2, min_amount: 14001, max_amount: 1000000, commission_percent: 3.5, flat_bonus: 0 }
-      ];
-      dbData.products = dbData.products || [];
-      dbData.price_ranges = dbData.price_ranges || [];
-      dbData.sliders = dbData.sliders || [];
-      dbData.bank_accounts = dbData.bank_accounts || [];
-      dbData.messages = dbData.messages || [];
-      dbData.withdrawals = dbData.withdrawals || [];
-      dbData.disputes = dbData.disputes || [];
-      dbData.settings = dbData.settings || {
-        level1_commission: 10,
-        level2_commission: 5,
-        level3_commission: 2,
-        min_plan_amount: 200,
-        max_plan_amount: 100000,
-        telegram_link: "https://t.me/TpayX",
-        winpey_api_key: "488b923c-2b03-465e-b9df-55d018124e0c",
-        winpey_api_secret: "fc4a56a2439f47c19213c747ee5693c6"
-      };
-      if (dbData.settings.telegram_link === undefined) dbData.settings.telegram_link = "https://t.me/TpayX";
-      if (dbData.settings.min_plan_amount === undefined) dbData.settings.min_plan_amount = 200;
-      if (dbData.settings.max_plan_amount === undefined) dbData.settings.max_plan_amount = 100000;
-      if (!dbData.settings.winpey_api_key) dbData.settings.winpey_api_key = "488b923c-2b03-465e-b9df-55d018124e0c";
-      if (!dbData.settings.winpey_api_secret) dbData.settings.winpey_api_secret = "fc4a56a2439f47c19213c747ee5693c6";
-
-      idTrackers.commission_slabs = idTrackers.commission_slabs || Math.max(2, dbData.commission_slabs.length);
-      idTrackers.products = idTrackers.products || 0;
-      idTrackers.price_ranges = idTrackers.price_ranges || 0;
-      idTrackers.sliders = idTrackers.sliders || 0;
-      idTrackers.bank_accounts = idTrackers.bank_accounts || 0;
-      idTrackers.messages = idTrackers.messages || 0;
-      idTrackers.withdrawals = idTrackers.withdrawals || 0;
-      idTrackers.disputes = idTrackers.disputes || 0;
-
-      // Migrate existing upi_accounts to bank_accounts in memory
-      if (dbData.upi_accounts) {
-        dbData.bank_accounts = dbData.upi_accounts.map(acc => ({
-          id: acc.id,
-          user_id: acc.user_id,
-          bank_name: acc.wallet_type || 'HDFC Bank',
-          account_holder: 'Tushar Sharma',
-          account_number: acc.upi_id ? acc.upi_id.split('@')[0] : '50100481729381',
-          ifsc_code: 'HDFC0000123',
-          status: acc.status,
-          created_at: acc.created_at || new Date().toISOString()
-        }));
-        idTrackers.bank_accounts = Math.max(idTrackers.upi_accounts || 0, dbData.bank_accounts.length);
-        delete dbData.upi_accounts;
-        delete idTrackers.upi_accounts;
-      }
-
-      // Ensure user records have username and is_blocked properties
-      dbData.users.forEach(u => {
-        if (!u.username) {
-          if (u.uid === 'M118248') {
-            u.username = 'Bee_dg9mz6bc';
-          } else {
-            u.username = `TpayX_${u.uid}`;
-          }
-        }
-        if (u.is_blocked === undefined) {
-          u.is_blocked = false;
-        }
-      });
-      isHydrated = true;
-    } catch (e) {
-      console.error('Error loading JSON database:', e);
-    }
-  }
+  // Database is 100% managed by MySQL. No local JSON file reads.
 }
 
 // MySQL Database Pool for aaPanel / Local Server
@@ -1362,160 +1226,13 @@ function runStartupMigrations() {
   }
 }
 
-// Seed script wrapping
+// Database initialization on server start
 async function initDb() {
   if (mysqlPool) {
     console.log('[Database Init] Initializing database state from local MySQL...');
     await syncDbFromMysql();
-  } else {
-    loadDb();
   }
   isHydrated = true;
-  runStartupMigrations();
-
-  // Initialize arrays to prevent runtime errors
-  dbData.products = dbData.products || [];
-  dbData.price_ranges = dbData.price_ranges || [];
-  idTrackers.products = idTrackers.products || 0;
-  idTrackers.price_ranges = idTrackers.price_ranges || 0;
-
-  if (dbData.products.length === 0) {
-    dbData.products = [
-      { id: 1, name: 'HDFC Bank', amount: 10000, income: 250.0, quota: 10250, color: 'blue', type: 'Bank', percent: '2.5%', created_at: new Date().toISOString() },
-      { id: 2, name: 'SBI Bank', amount: 14544, income: 442.32, quota: 14986.32, color: 'red', type: 'Bank', percent: '3%+6', created_at: new Date().toISOString() }
-    ];
-    idTrackers.products = 2;
-  }
-
-  // Seed default price ranges if empty
-  if (dbData.price_ranges.length === 0) {
-    dbData.price_ranges = [
-      { id: 1, label: 'ALL', min_val: 0, max_val: 99999999, created_at: new Date().toISOString() },
-      { id: 2, label: '0 - 500', min_val: 0, max_val: 500, created_at: new Date().toISOString() },
-      { id: 3, label: '500 - 1000', min_val: 500, max_val: 1000, created_at: new Date().toISOString() },
-      { id: 4, label: '1000 - 5000', min_val: 1000, max_val: 5000, created_at: new Date().toISOString() },
-      { id: 5, label: '5000+', min_val: 5000, max_val: 99999999, created_at: new Date().toISOString() }
-    ];
-    idTrackers.price_ranges = 5;
-  }
-  
-  // Seed default user and relationships if database is empty
-  if (dbData.users.length === 0) {
-    console.log('Seeding mock JSON database records...');
-    const defaultPasswordHash = await bcrypt.hash('12345678', 10);
-    
-    // 1. Parent (TpayX_User, UID: M118248)
-    idTrackers.users++;
-    const parentId = idTrackers.users;
-    dbData.users.push({
-      id: parentId,
-      uid: 'M118248',
-      mobile: '8763527330',
-      password_hash: defaultPasswordHash,
-      pin: '1234',
-      ref_code: 'tp3340vnxr',
-      parent_id: null,
-      inr_balance: 10866.05,
-      bcoin_balance: 115.77,
-      usdt_balance: 0.0,
-      total_earnings: 10751.28,
-      today_profit: 0.0,
-      yesterday_profit: 620.23,
-      created_at: new Date().toISOString()
-    });
-
-    // 2. Child (UID: M121371)
-    idTrackers.users++;
-    const childId = idTrackers.users;
-    dbData.users.push({
-      id: childId,
-      uid: 'M121371',
-      mobile: '9876543210',
-      password_hash: defaultPasswordHash,
-      pin: '4321',
-      ref_code: 'tpchild123',
-      parent_id: parentId,
-      inr_balance: 0.0,
-      bcoin_balance: 0.0,
-      usdt_balance: 0.0,
-      total_earnings: 0.0,
-      today_profit: 0.0,
-      yesterday_profit: 0.0,
-      created_at: new Date().toISOString()
-    });
-
-    // 3. Seed Bank Accounts
-    idTrackers.bank_accounts += 3;
-    dbData.bank_accounts.push(
-      { id: 1, user_id: parentId, bank_name: 'HDFC Bank', account_holder: 'Tushar Sharma', account_number: '50100481729381', ifsc_code: 'HDFC0000123', status: 'Active', created_at: new Date().toISOString() },
-      { id: 2, user_id: parentId, bank_name: 'State Bank of India', account_holder: 'Tushar Sharma', account_number: '30948172930', ifsc_code: 'SBIN0001234', status: 'Active', created_at: new Date().toISOString() },
-      { id: 3, user_id: parentId, bank_name: 'ICICI Bank', account_holder: 'Tushar Sharma', account_number: '000401827391', ifsc_code: 'ICIC0000004', status: 'Unauthorized', created_at: new Date().toISOString() }
-    );
-
-    // 4. Seed Orders
-    idTrackers.orders += 4;
-    dbData.orders.push(
-      { id: 1, order_id: 'gn20260716223940D3A083', user_id: parentId, asset_type: 'INR', amount: 10000.0, expected_income: 256.0, quota: 10256.0, status: 'Confirming', utr: null, created_at: '2026-07-16T22:39:40.000Z' },
-      { id: 2, order_id: 'gn20260716182215A2B891', user_id: parentId, asset_type: 'INR', amount: 10000.0, expected_income: 256.0, quota: 0.0, status: 'Canceled', utr: null, created_at: '2026-07-16T18:22:15.000Z' },
-      { id: 3, order_id: 'gu2026071623051518F11', user_id: parentId, asset_type: 'USDT', amount: 1.0, expected_income: 6.5, quota: 0.0, status: 'Canceled', utr: null, created_at: '2026-07-16T23:05:15.000Z' },
-      { id: 4, order_id: 'gu20260609104523916278', user_id: parentId, asset_type: 'USDT', amount: 1.0, expected_income: 6.5, quota: 0.0, status: 'Canceled', utr: null, created_at: '2026-06-09T10:45:23.000Z' }
-    );
-
-    // 5. Seed Transactions (Quota History)
-    idTrackers.transactions += 7;
-    dbData.transactions.push(
-      { id: 1, user_id: parentId, type: 'Withdraw', amount: 299.94, balance_after: 10451.34, description: 'Bank: HDFC Bank, A/C: 50100481729381, Holder: Tushar Sharma, UTR: 458712345678, TXID: TXN9632587410', created_at: '2026-07-16T10:22:15.000Z' },
-      { id: 2, user_id: parentId, type: 'Withdraw', amount: 298.06, balance_after: 9875.05, description: 'Bank: HDFC Bank, A/C: 50100481729381, Holder: Tushar Sharma, UTR: 458712345679, TXID: TXN9632587411', created_at: '2026-07-15T14:08:33.000Z' },
-      { id: 3, user_id: parentId, type: 'Withdraw', amount: 6999.64, balance_after: 9175.41, description: 'Bank: HDFC Bank, A/C: 50100481729381, Holder: Tushar Sharma, UTR: 458712345680, TXID: TXN9632587412', created_at: '2026-07-12T09:15:00.000Z' },
-      { id: 4, user_id: parentId, type: 'Withdraw', amount: -299.94, balance_after: 10451.34, description: 'Withdrawal request', created_at: '2026-07-16T22:45:10.000Z' },
-      { id: 5, user_id: parentId, type: 'Newbie Bonus', amount: 256.00, balance_after: 10751.28, description: 'INR Bonus for newbie milestones', created_at: '2026-07-16T22:39:40.000Z' },
-      { id: 6, user_id: parentId, type: 'Commission', amount: 620.23, balance_after: 10495.28, description: 'Referral income', created_at: '2026-07-16T18:20:00.000Z' },
-      { id: 7, user_id: parentId, type: 'Withdraw', amount: -500.00, balance_after: 9875.05, description: 'Withdrawal request', created_at: '2026-07-15T14:12:33.000Z' }
-    );
-
-    // 6. Seed User Tasks
-    idTrackers.user_tasks += 6;
-    dbData.user_tasks.push(
-      { id: 1, user_id: parentId, task_key: 'set_pin', completed: 1, claimed: 1, created_at: new Date().toISOString() },
-      { id: 2, user_id: parentId, task_key: 'add_support', completed: 1, claimed: 1, created_at: new Date().toISOString() },
-      { id: 3, user_id: parentId, task_key: 'join_bot', completed: 1, claimed: 1, created_at: new Date().toISOString() },
-      { id: 4, user_id: childId, task_key: 'set_pin', completed: 0, claimed: 0, created_at: new Date().toISOString() },
-      { id: 5, user_id: childId, task_key: 'add_support', completed: 0, claimed: 0, created_at: new Date().toISOString() },
-      { id: 6, user_id: childId, task_key: 'join_bot', completed: 0, claimed: 0, created_at: new Date().toISOString() }
-    );
-
-    saveDb();
-    console.log('Seeded database successfully.');
-  }
-
-  // Seed announcements if empty
-  dbData.messages = dbData.messages || [];
-  idTrackers.messages = idTrackers.messages || 0;
-  if (dbData.messages.length === 0) {
-    dbData.messages = [
-      { id: 1, title: 'Welcome to TpayX!', content: 'Welcome to your premium investment platform. Start exploring daily plans now!', created_at: new Date(Date.now() - 3600000).toISOString() },
-      { id: 2, title: 'System Maintenance Scheduled', content: 'Our servers will undergo scheduled optimization on Sunday at 02:00 AM IST. Platforms will remain online.', created_at: new Date().toISOString() }
-    ];
-    idTrackers.messages = 2;
-    saveDb();
-  }
-
-  // Repair any orders where UTR was mistakenly saved in status column
-  let repairedCount = 0;
-  if (dbData.orders && dbData.orders.length > 0) {
-    dbData.orders.forEach(order => {
-      // Check if status looks like a UTR (12-digit number)
-      if (order.status && /^\d{12}$/.test(order.status)) {
-        order.utr = order.status;
-        order.status = 'Confirming';
-        repairedCount++;
-      }
-    });
-    if (repairedCount > 0) {
-      console.log(`[Database Repair] Corrected ${repairedCount} orders with UTR numbers in status column.`);
-      saveDb();
-    }
-  }
 }
 
 function saveBase64File(base64Str, prefix) {

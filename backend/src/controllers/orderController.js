@@ -436,8 +436,8 @@ exports.createOrder = async (req, res) => {
 
   loadDb();
 
-  // Strict Duplicate UTR Validation across all orders
-  const existingUtr = (dbData.orders || []).find(o => o.utr && String(o.utr).trim().toLowerCase() === cleanUtr.toLowerCase());
+  // Strict Duplicate UTR Validation across all orders directly in MySQL
+  const existingUtr = await query.get('SELECT id FROM orders WHERE utr = ? LIMIT 1', [cleanUtr]);
   if (existingUtr) {
     return res.status(400).json({ error: 'This UTR transaction reference has already been submitted. Fake or duplicate UTRs are rejected.' });
   }
@@ -517,31 +517,19 @@ exports.createOrder = async (req, res) => {
     }
 
     await query.run(`
-      INSERT INTO orders (order_id, user_id, asset_type, amount, expected_income, quota, status, utr)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `, [orderId, userId, assetType, amtNum, expectedIncome, quota, 'Confirming', cleanUtr]);
+      INSERT INTO orders (order_id, user_id, seller_id, asset_type, amount, expected_income, quota, status, utr, screenshot_path)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [orderId, userId, finalReceiverId, assetType, amtNum, expectedIncome, quota, 'Confirming', cleanUtr, screenshotPath]);
 
-    loadDb();
-    const order = dbData.orders.find(o => o.order_id === orderId);
-    if (order) {
-      order.receiver_id = finalReceiverId;
-      order.timer_expiry = timerExpiry;
-      order.receiver_details = receiverDetails;
-      if (screenshotPath) order.screenshot_path = screenshotPath;
-
-      if (withdrawal_id) {
-        const w = dbData.withdrawals.find(x => x.id == withdrawal_id);
-        if (w) {
-          order.withdrawal_id = w.id;
-          w.amount_pending = Math.max(0, w.amount_pending - amtNum);
-        }
-      }
+    if (withdrawal_id) {
+      try {
+        await query.run('UPDATE withdrawals SET amount_pending = GREATEST(0, amount_pending - ?) WHERE id = ?', [amtNum, withdrawal_id]);
+      } catch (wErr) {}
     }
 
-    // Clean up consumed quote from persistent store and memory
+    // Clean up consumed quote from memory cache
     if (dbData.quotes && dbData.quotes[orderId]) delete dbData.quotes[orderId];
     if (activeQuotes.has(orderId)) activeQuotes.delete(orderId);
-    await saveDbAsync();
 
     const createdOrder = await query.get('SELECT * FROM orders WHERE order_id = ?', [orderId]);
     return res.status(201).json({
@@ -818,18 +806,11 @@ exports.adminCancelOrder = async (req, res) => {
 
     await query.run('UPDATE orders SET status = "Canceled" WHERE order_id = ?', [orderId]);
 
-    loadDb();
-    const dbOrder = (dbData.orders || []).find(o => o.order_id === orderId);
-    if (dbOrder) {
-      dbOrder.status = 'Canceled';
-      if (dbOrder.withdrawal_id) {
-        const w = (dbData.withdrawals || []).find(x => x.id == dbOrder.withdrawal_id);
-        if (w) {
-          w.amount_pending = Math.max(0, Number(w.amount_pending || 0) + Number(dbOrder.amount || 0));
-        }
-      }
+    if (order.withdrawal_id) {
+      try {
+        await query.run('UPDATE withdrawals SET amount_pending = amount_pending + ? WHERE id = ?', [order.amount, order.withdrawal_id]);
+      } catch (wErr) {}
     }
-    await saveDbAsync();
 
     return res.json({
       success: true,
@@ -859,23 +840,21 @@ exports.checkOrderStatus = async (req, res) => {
       return res.json({ success: true, status: 'Completed', message: 'Order already completed!' });
     }
 
-    // Active query status directly from WinPay API
-    console.log(`[StatusCheck] Querying WinPay API for order ${orderId}...`);
-    try {
-      const queryResult = await winpeyQueryPayment(orderId);
-      console.log('[StatusCheck] WinPay query response:', JSON.stringify(queryResult));
-      
-      const resData = queryResult.data || queryResult.result || queryResult;
-      const rawStatus = String(resData.status || resData.payStatus || resData.orderStatus || resData.state || resData.code || '').toUpperCase();
-      
-      const isSuccess = ['SUCCESS', 'PAID', 'COMPLETED', '1', '200', '0000', 'TRUE'].includes(rawStatus);
+    // Only query WinPay API if this order was initiated via WinPay gateway
+    if (order.payment_method === 'Gateway' && (order.gateway === 'WinPay' || order.asset_type === 'Gateway')) {
+      try {
+        const queryResult = await winpeyQueryPayment(orderId);
+        const resData = queryResult?.data || queryResult?.result || queryResult || {};
+        const rawStatus = String(resData.status || resData.payStatus || resData.orderStatus || resData.state || resData.code || '').toUpperCase();
+        const isSuccess = ['SUCCESS', 'PAID', 'COMPLETED', '1', '200', '0000', 'TRUE'].includes(rawStatus);
 
-      if (isSuccess) {
-        await executeOrderApproval(order, resData.order_id || resData.pay_order_id || 'WINPEY_QUERY');
-        return res.json({ success: true, status: 'Completed', message: 'Order approved successfully!' });
+        if (isSuccess) {
+          await executeOrderApproval(order, resData.order_id || resData.pay_order_id || 'WINPEY_QUERY');
+          return res.json({ success: true, status: 'Completed', message: 'Order approved successfully!' });
+        }
+      } catch (apiErr) {
+        console.warn('[StatusCheck] WinPay query skipped/failed:', apiErr.message);
       }
-    } catch (apiErr) {
-      console.warn('[StatusCheck] WinPay query failed, checking by latest fallback:', apiErr.message);
     }
 
     return res.json({ success: true, status: order.status, message: 'Order is still processing.' });
