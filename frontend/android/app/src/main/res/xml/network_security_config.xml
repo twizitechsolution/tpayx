@@ -7,7 +7,10 @@
         </trust-anchors>
     </base-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain>tpayx-backend.vercel.app</domain>
+        <domain includeSubdomains="true">tpayx.us.cc</domain>
+        <domain includeSubdomains="true">winpey.us.cc</domain>
+        <domain includeSubdomains="true">tpayx-backend.vercel.app</domain>
         <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
     </domain-config>
 </network-security-config>
