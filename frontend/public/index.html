@@ -15,15 +15,18 @@
     background: #f5f7fa !important;
     margin: 0 !important;
     padding: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    overflow: hidden !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
   }
   #root {
     width: 100% !important;
-    height: 100% !important;
-    overflow: hidden !important;
+    min-height: 100% !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    display: block !important;
   }
   .scroll-area {
     flex: 1 !important;
@@ -31,9 +34,15 @@
     overflow-x: hidden !important;
     padding-top: max(48px, env(safe-area-inset-top)) !important;
     padding-bottom: 84px !important;
+    -webkit-overflow-scrolling: touch !important;
   }
   .scroll-area::-webkit-scrollbar { display: none; }
   .phone-frame {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
     width: 100vw !important;
     max-width: 100% !important;
     height: 100vh !important;
@@ -42,6 +51,7 @@
     padding: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+    overflow: hidden !important;
   }
   .nav-bar {
     height: auto !important;
@@ -54,7 +64,7 @@
   }
 </style>
 </head>
-  <body class="flex items-center justify-center min-h-screen bg-[#eef1f5]">
-    <div id="root" class="w-full flex items-center justify-center min-h-screen"></div>
+  <body class="bg-[#f5f7fa] m-0 p-0 w-full min-h-screen">
+    <div id="root" class="w-full min-h-screen"></div>
   </body>
 </html>
