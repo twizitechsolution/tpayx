@@ -10,6 +10,7 @@ try {
 
 const express = require('express');
 const cors = require('cors');
+const jwt = require('jsonwebtoken');
 const { initDb, query, mysqlPool, dbData, idTrackers, saveDb, saveDbAsync, getPendingSync, loadDb, syncDbFromMysql, getSettingsMap, saveSettingValue, getBonusForAmount, getBonusSlabLabelForAmount, isSupabaseConnected, isHydratedStatus, getLocalVersion } = require('./db');
 
 // Controllers
@@ -281,6 +282,23 @@ app.get('/api/products', async (req, res) => {
   try {
     loadDb();
     
+    // Extract current user if authenticated, to prevent matching user with themselves
+    let currentUserId = null;
+    let currentUserMobile = null;
+    let currentUserUid = null;
+    try {
+      const authHeader = req.headers['authorization'];
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'TpayX_secret_jwt_key');
+        if (decoded && decoded.id) {
+          currentUserId = Number(decoded.id);
+          currentUserMobile = decoded.mobile;
+          currentUserUid = decoded.uid;
+        }
+      }
+    } catch (tokenErr) {}
+
     const minPlanAmount = Number(dbData.settings?.min_plan_amount ?? 200);
     const maxPlanAmount = Number(dbData.settings?.max_plan_amount ?? 100000);
     
@@ -302,12 +320,27 @@ app.get('/api/products', async (req, res) => {
       .filter(w => w.status === 'Pending' && w.amount_pending >= minPlanAmount && w.amount_pending <= maxPlanAmount);
       
     pendingWithdrawals.forEach(w => {
+      // STRICT SELF-MATCHING PREVENTION: Buyer can NEVER buy their own withdrawal!
+      if (currentUserId && (Number(w.user_id) === currentUserId || String(w.user_id) === String(currentUserId))) {
+        return;
+      }
+
       const seller = dbData.users.find(u => u.id == w.user_id);
       if (!seller || seller.bcoin_balance < minPlanAmount || seller.is_blocked) return;
 
+      // STRICT SELF-MATCHING PREVENTION: Seller cannot be the logged-in user
+      if (currentUserId && (
+        Number(seller.id) === currentUserId ||
+        String(seller.id) === String(currentUserId) ||
+        (currentUserMobile && seller.mobile && seller.mobile === currentUserMobile) ||
+        (currentUserUid && seller.uid && seller.uid === currentUserUid)
+      )) {
+        return;
+      }
+
       // Exclude seller if they already have an active unfinalized sales order or active quote
       const hasActiveOrder = (dbData.orders || []).some(o =>
-        o.receiver_id == seller.id && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
+        (o.receiver_id == seller.id || o.seller_id == seller.id) && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
       );
       if (hasActiveOrder) return;
       const hasActiveQuote = Object.values(dbData.quotes || {}).some(q =>
@@ -320,7 +353,7 @@ app.get('/api/products', async (req, res) => {
 
       // Verify that this user has enough available T-Coins to cover the withdrawal request
       const activeMatchTotal = dbData.orders
-        .filter(o => o.receiver_id == seller.id && ['Pending', 'Confirming', 'Disputed', 'Admin Review'].includes(o.status))
+        .filter(o => (o.receiver_id == seller.id || o.seller_id == seller.id) && ['Pending', 'Confirming', 'Disputed', 'Admin Review'].includes(o.status))
         .reduce((sum, o) => {
           if (o.withdrawal_id) return sum; // Avoid double-counting direct matches
           return sum + o.amount;
@@ -350,12 +383,23 @@ app.get('/api/products', async (req, res) => {
     // 2. Add dynamic P2P products from users with TCoin balance >= minPlanAmount
     const eligibleSellers = (dbData.users || []).filter(u => {
       if (u.id === 1 || u.is_blocked || u.bcoin_balance < minPlanAmount) return false;
+
+      // STRICT SELF-MATCHING PREVENTION: Buyer can NEVER be their own seller
+      if (currentUserId && (
+        Number(u.id) === currentUserId ||
+        String(u.id) === String(currentUserId) ||
+        (currentUserMobile && u.mobile && u.mobile === currentUserMobile) ||
+        (currentUserUid && u.uid && u.uid === currentUserUid)
+      )) {
+        return false;
+      }
+
       const hasBank = (dbData.bank_accounts || []).some(b => b.user_id == u.id && b.status === 'Active');
       if (!hasBank) return false;
 
       // Exclude seller if they already have an active unfinalized sales order or active quote
       const hasActiveOrder = (dbData.orders || []).some(o =>
-        o.receiver_id == u.id && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
+        (o.receiver_id == u.id || o.seller_id == u.id) && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
       );
       if (hasActiveOrder) return false;
       const hasActiveQuote = Object.values(dbData.quotes || {}).some(q =>
@@ -368,7 +412,7 @@ app.get('/api/products', async (req, res) => {
       if (hasPendingWithdrawal) return false;
 
       const activeMatchTotal = dbData.orders
-        .filter(o => o.receiver_id == u.id && ['Pending', 'Confirming', 'Disputed', 'Admin Review'].includes(o.status))
+        .filter(o => (o.receiver_id == u.id || o.seller_id == u.id) && ['Pending', 'Confirming', 'Disputed', 'Admin Review'].includes(o.status))
         .reduce((sum, o) => sum + o.amount, 0);
       const availableBalance = u.bcoin_balance - activeMatchTotal;
       return availableBalance >= minPlanAmount;
@@ -376,7 +420,7 @@ app.get('/api/products', async (req, res) => {
 
     eligibleSellers.forEach(seller => {
       const activeMatchTotal = dbData.orders
-        .filter(o => o.receiver_id == seller.id && ['Pending', 'Confirming', 'Disputed'].includes(o.status))
+        .filter(o => (o.receiver_id == seller.id || o.seller_id == seller.id) && ['Pending', 'Confirming', 'Disputed'].includes(o.status))
         .reduce((sum, o) => sum + o.amount, 0);
       const availableBalance = seller.bcoin_balance - activeMatchTotal;
       const rawAmount = Math.min(availableBalance, maxPlanAmount);
@@ -497,7 +541,7 @@ app.get('/api/admin/orders', adminAuth, async (req, res) => {
 
     const list = allOrders.map(order => {
       const u = userMap.get(Number(order.user_id)) || {};
-      const recId = order.receiver_id;
+      const recId = order.receiver_id || order.seller_id;
       let receiver_mobile = 'N/A';
       let receiver_uid = 'N/A';
       let receiver_name = 'P2P Seller';
@@ -524,8 +568,23 @@ app.get('/api/admin/orders', adminAuth, async (req, res) => {
         receiver_upi = '8763527330@upi';
       }
 
+      const createdAtMs = order.created_at ? new Date(order.created_at).getTime() : Date.now();
+      const expiryMs = order.timer_expiry ? new Date(order.timer_expiry).getTime() : (createdAtMs + 15 * 60 * 1000);
+      const timerExpiryIso = new Date(expiryMs).toISOString();
+
+      let currentStatus = order.status;
+      if (['Confirming', 'Pending'].includes(currentStatus)) {
+        if (Date.now() > expiryMs) {
+          currentStatus = 'Admin Review';
+          query.run('UPDATE orders SET status = "Admin Review" WHERE id = ?', [order.id]).catch(() => {});
+        }
+      }
+
       return {
         ...order,
+        status: currentStatus,
+        timer_expiry: timerExpiryIso,
+        receiver_id: recId,
         user_uid: u.uid || `UID_${order.user_id}`,
         user_mobile: u.mobile || 'N/A',
         receiver_mobile,
@@ -1078,27 +1137,46 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
     const requestsRows = await query.all(
-      'SELECT o.*, u.username as buyer_username, u.uid as buyer_uid, u.mobile as buyer_mobile FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.seller_id = ? AND o.status IN ("Confirming", "Pending") ORDER BY o.id DESC',
-      [userId]
+      'SELECT o.*, u.username as buyer_username, u.uid as buyer_uid, u.mobile as buyer_mobile FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE (o.seller_id = ? OR o.receiver_id = ?) AND o.status IN ("Confirming", "Pending") ORDER BY o.id DESC',
+      [userId, userId]
     ) || [];
 
+    const now = Date.now();
+    const enrichedRequests = [];
+    for (const r of requestsRows) {
+      const createdAtMs = r.created_at ? new Date(r.created_at).getTime() : now;
+      const expiryMs = r.timer_expiry ? new Date(r.timer_expiry).getTime() : (createdAtMs + 15 * 60 * 1000);
+      
+      // If 15 minutes expired without receiver confirmation, escalate order to Admin Review
+      if (now > expiryMs) {
+        query.run('UPDATE orders SET status = "Admin Review" WHERE id = ?', [r.id]).catch(() => {});
+        continue;
+      }
+
+      enrichedRequests.push({
+        ...r,
+        receiver_id: r.receiver_id || r.seller_id,
+        timer_expiry: new Date(expiryMs).toISOString()
+      });
+    }
+
     const completedSalesRes = await query.get(
-      'SELECT COUNT(*) as count, SUM(amount) as total FROM orders WHERE seller_id = ? AND status = "Completed"',
-      [userId]
+      'SELECT COUNT(*) as count, SUM(amount) as total FROM orders WHERE (seller_id = ? OR receiver_id = ?) AND status = "Completed"',
+      [userId, userId]
     );
 
     const historyRows = await query.all(
-      'SELECT id, order_id, amount, utr, status, created_at FROM orders WHERE seller_id = ? ORDER BY id DESC LIMIT 20',
-      [userId]
+      'SELECT id, order_id, amount, utr, status, created_at FROM orders WHERE (seller_id = ? OR receiver_id = ?) ORDER BY id DESC LIMIT 20',
+      [userId, userId]
     ) || [];
 
     return res.json({
       success: true,
-      requests: requestsRows,
+      requests: enrichedRequests,
       stats: {
         total_sales_count: completedSalesRes?.count || 0,
         total_sales_amount: Number(completedSalesRes?.total || 0),
-        pending_count: requestsRows.length,
+        pending_count: enrichedRequests.length,
         usdt_rate: 110.00,
         rupee_rate_label: '2.5% + 6'
       },
@@ -1711,24 +1789,19 @@ app.get('/api/cron/order-cleanup', async (req, res) => {
   try {
     const now = Date.now();
     let cleaned = 0;
-    if (Array.isArray(dbData.orders)) {
-      dbData.orders.forEach(o => {
-        const created = new Date(o.created_at || o.timestamp).getTime();
-        if (o.status === 'PENDING') {
-          if (now - created >= 15 * 60 * 1000) {
-            o.status = 'EXPIRED';
-            cleaned++;
-          }
-        } else if (o.status === 'CONFIRMING' || o.status === 'Confirming') {
-          if (now - created >= 2 * 60 * 60 * 1000) {
-            o.status = 'Admin Review';
-            cleaned++;
-          }
+    // Escalate expired confirming orders to Admin Review directly in MySQL
+    try {
+      const activeConfirming = await query.all("SELECT id, created_at, status FROM orders WHERE status IN ('Confirming', 'Pending')");
+      for (const ord of (activeConfirming || [])) {
+        const createdMs = ord.created_at ? new Date(ord.created_at).getTime() : now;
+        if (now - createdMs >= 15 * 60 * 1000) {
+          await query.run('UPDATE orders SET status = "Admin Review" WHERE id = ?', [ord.id]);
+          cleaned++;
         }
-      });
-      if (cleaned > 0) await saveDb();
-    }
-    return res.json({ success: true, cleanedOrders: cleaned, message: 'Order cleanup executed via Vercel Cron' });
+      }
+    } catch (dbErr) {}
+
+    return res.json({ success: true, cleanedOrders: cleaned, message: 'Order cleanup executed' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

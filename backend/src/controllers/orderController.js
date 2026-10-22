@@ -253,14 +253,29 @@ exports.getPaymentQuote = async (req, res) => {
       });
 
       let matchedUser = null;
-      if (eligibleUsers.length > 0) {
+
+      // If a specific withdrawal was requested (e.g. from clicking a dynamic P2P card)
+      const requestedWithdrawalId = req.body.withdrawal_id || req.body.withdrawalId;
+      if (requestedWithdrawalId) {
+        const specificW = (dbData.withdrawals || []).find(w => w.id == requestedWithdrawalId && w.status === 'Pending');
+        // STRICT SELF-MATCHING PREVENTION: Ignore if withdrawal belongs to current user
+        if (specificW && Number(specificW.user_id) !== Number(userId) && String(specificW.user_id) !== String(userId)) {
+          const specificSeller = (dbData.users || []).find(u => u.id == specificW.user_id && !u.is_blocked && u.id != userId);
+          if (specificSeller) {
+            matchedUser = specificSeller;
+            withdrawalId = specificW.id;
+          }
+        }
+      }
+
+      if (!matchedUser && eligibleUsers.length > 0) {
         // Uniform fair rotation across all eligible users
         const shuffledEligible = [...eligibleUsers].sort(() => Math.random() - 0.5);
         matchedUser = shuffledEligible[0];
 
         // Check if selected user has a matching pending withdrawal
         const userWithdrawal = (dbData.withdrawals || []).find(w => 
-          w.user_id == matchedUser.id && w.status === 'Pending' && w.amount_pending >= amtNum && w.amount_pending >= 200
+          w.user_id == matchedUser.id && w.user_id != userId && w.status === 'Pending' && w.amount_pending >= amtNum && w.amount_pending >= 200
         );
         if (userWithdrawal) {
           withdrawalId = userWithdrawal.id;
@@ -463,6 +478,16 @@ exports.createOrder = async (req, res) => {
     const timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     let finalReceiverId = receiver_id || 1;
 
+    // Check if withdrawal_id belongs to the buyer themselves
+    if (withdrawal_id) {
+      const wRecord = (dbData.withdrawals || []).find(w => w.id == withdrawal_id);
+      if (wRecord && (Number(wRecord.user_id) === Number(userId) || String(wRecord.user_id) === String(userId))) {
+        console.warn(`[SelfMatchBlocked] User ${userId} attempted to match own withdrawal ${withdrawal_id}. Unlinking.`);
+        withdrawal_id = null;
+        finalReceiverId = 1;
+      }
+    }
+
     // STRICT SELF-MATCHING PREVENTION: Buyer can NEVER be their own receiver
     const buyerUser = (dbData.users || []).find(u => u.id == userId) || {};
     const candidateReceiver = (dbData.users || []).find(u => u.id == finalReceiverId) || {};
@@ -473,8 +498,12 @@ exports.createOrder = async (req, res) => {
       (buyerUser.mobile && candidateReceiver.mobile && buyerUser.mobile === candidateReceiver.mobile) ||
       (buyerUser.uid && candidateReceiver.uid && buyerUser.uid === candidateReceiver.uid)
     ) {
-      console.log(`[OrderAssignment] Receiver ${finalReceiverId} matches buyer (${userId}). Enforcing fallback to Admin (ID 1).`);
-      finalReceiverId = 1;
+      console.log(`[OrderAssignment] Receiver ${finalReceiverId} matches buyer (${userId}). Finding alternative eligible seller.`);
+      const altSeller = (dbData.users || []).find(u => 
+        u.id != userId && u.id != 1 && !u.is_blocked && (u.bcoin_balance || 0) >= amtNum &&
+        (dbData.bank_accounts || []).some(b => b.user_id == u.id && b.status === 'Active')
+      );
+      finalReceiverId = altSeller ? altSeller.id : 1;
       withdrawal_id = null;
     }
 
@@ -581,7 +610,32 @@ exports.listOrders = async (req, res) => {
   const userId = req.user.id;
   try {
     const orders = await query.all('SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC', [userId]);
-    return res.json({ success: true, orders });
+    const now = Date.now();
+    const processedOrders = (orders || []).map(order => {
+      const createdAtMs = order.created_at ? new Date(order.created_at).getTime() : now;
+      const expiryMs = order.timer_expiry
+        ? new Date(order.timer_expiry).getTime()
+        : (isNaN(createdAtMs) ? now + 15 * 60 * 1000 : createdAtMs + 15 * 60 * 1000);
+      const timerExpiryIso = new Date(expiryMs).toISOString();
+
+      let currentStatus = order.status;
+      // If order is still 'Confirming' or 'Pending', but 15 minutes have passed, transition to 'Admin Review'
+      if (['Confirming', 'Pending'].includes(currentStatus)) {
+        if (now > expiryMs) {
+          currentStatus = 'Admin Review';
+          query.run('UPDATE orders SET status = "Admin Review" WHERE id = ?', [order.id]).catch(() => {});
+        }
+      }
+
+      return {
+        ...order,
+        receiver_id: order.receiver_id || order.seller_id,
+        status: currentStatus,
+        timer_expiry: timerExpiryIso
+      };
+    });
+
+    return res.json({ success: true, orders: processedOrders });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: 'Internal Server Error' });
@@ -857,7 +911,23 @@ exports.checkOrderStatus = async (req, res) => {
       }
     }
 
-    return res.json({ success: true, status: order.status, message: 'Order is still processing.' });
+    const now = Date.now();
+    const createdAtMs = order.created_at ? new Date(order.created_at).getTime() : now;
+    const expiryMs = order.timer_expiry ? new Date(order.timer_expiry).getTime() : (createdAtMs + 15 * 60 * 1000);
+    let currentStatus = order.status;
+    if (['Confirming', 'Pending'].includes(currentStatus)) {
+      if (now > expiryMs) {
+        currentStatus = 'Admin Review';
+        query.run('UPDATE orders SET status = "Admin Review" WHERE id = ?', [order.id]).catch(() => {});
+      }
+    }
+
+    return res.json({
+      success: true,
+      status: currentStatus,
+      timer_expiry: new Date(expiryMs).toISOString(),
+      message: currentStatus === 'Confirming' ? 'Order is confirming' : 'Order is under Admin Review'
+    });
   } catch (err) {
     console.error('[StatusCheck] Error:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
