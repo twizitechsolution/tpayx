@@ -39,36 +39,26 @@ async function storeOtp(mobile, otp) {
   };
   saveDb();
 
-  // Directly persist to Supabase settings table for instant multi-container access
+  // Persist directly to local MySQL settings table for instant multi-worker / process resilience
   try {
-    if (supabase) {
-      await Promise.race([
-        supabase.from('settings').upsert({
-          key: `otp_${mobile}`,
-          value: JSON.stringify({
-            otp: String(otp).trim(),
-            expiresAt: Date.now() + 10 * 60 * 1000
-          }),
-          description: `Active OTP code for ${mobile}`
-        }, { onConflict: 'key' }),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase OTP store timeout')), 3500))
-      ]);
-      console.log(`[Supabase OTP] Stored OTP for ${mobile} successfully.`);
-    }
+    const val = JSON.stringify({
+      otp: String(otp).trim(),
+      expiresAt: Date.now() + 10 * 60 * 1000
+    });
+    await query.run(
+      'INSERT INTO settings (`key`, `value`, `description`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`), `description` = VALUES(`description`)',
+      [`otp_${mobile}`, val, `Active OTP code for ${mobile}`]
+    );
   } catch (err) {
-    console.warn('[Supabase OTP Store Warning]:', err.message);
+    console.warn('[MySQL OTP Store Warning]:', err.message);
   }
 }
 
-async function safeDeleteSupabaseOtp(mobile) {
-  if (!supabase) return;
+async function safeDeleteOtp(mobile) {
   try {
-    await Promise.race([
-      supabase.from('settings').delete().eq('key', `otp_${mobile}`),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase OTP delete timeout')), 3000))
-    ]);
+    await query.run('DELETE FROM settings WHERE `key` = ?', [`otp_${mobile}`]);
   } catch (e) {
-    console.warn('[Supabase OTP Delete Warning]:', e.message);
+    console.warn('[MySQL OTP Delete Warning]:', e.message);
   }
 }
 
@@ -90,45 +80,38 @@ async function verifyAndConsumeOtp(mobile, otp) {
     if (Date.now() <= entry.expiresAt && (entry.otp === cleanOtp || cleanOtp === '123456')) {
       delete dbData.otps[mobile];
       saveDb();
-      await safeDeleteSupabaseOtp(mobile);
+      await safeDeleteOtp(mobile);
       return { valid: true };
     }
     if (Date.now() > entry.expiresAt) {
       delete dbData.otps[mobile];
       saveDb();
-      await safeDeleteSupabaseOtp(mobile);
+      await safeDeleteOtp(mobile);
       return { valid: false, error: 'OTP has expired. Please request a new OTP.' };
     }
   }
 
-  // Query Supabase remote settings directly if not in local memory or mismatched
+  // Query local MySQL settings table if not in local memory or process restarted
   try {
-    if (supabase) {
-      const { data: row } = await Promise.race([
-        supabase.from('settings').select('value').eq('key', `otp_${mobile}`).single(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase OTP query timeout')), 3000))
-      ]);
-
-      if (row && row.value) {
-        const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
-        if (parsed && parsed.otp) {
-          if (Date.now() <= parsed.expiresAt && (String(parsed.otp).trim() === cleanOtp || cleanOtp === '123456')) {
-            // Delete consumed OTP
-            if (dbData.otps) delete dbData.otps[mobile];
-            saveDb();
-            await safeDeleteSupabaseOtp(mobile);
-            return { valid: true };
-          }
-          if (Date.now() > parsed.expiresAt) {
-            await safeDeleteSupabaseOtp(mobile);
-            return { valid: false, error: 'OTP has expired. Please request a new OTP.' };
-          }
-          return { valid: false, error: 'Incorrect OTP entered. Please check the code and try again.' };
+    const row = await query.get('SELECT `value` FROM settings WHERE `key` = ?', [`otp_${mobile}`]);
+    if (row && row.value) {
+      const parsed = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+      if (parsed && parsed.otp) {
+        if (Date.now() <= parsed.expiresAt && (String(parsed.otp).trim() === cleanOtp || cleanOtp === '123456')) {
+          if (dbData.otps) delete dbData.otps[mobile];
+          saveDb();
+          await safeDeleteOtp(mobile);
+          return { valid: true };
         }
+        if (Date.now() > parsed.expiresAt) {
+          await safeDeleteOtp(mobile);
+          return { valid: false, error: 'OTP has expired. Please request a new OTP.' };
+        }
+        return { valid: false, error: 'Incorrect OTP entered. Please check the code and try again.' };
       }
     }
   } catch (err) {
-    console.warn('[Supabase OTP Verify Warning]:', err.message);
+    console.warn('[MySQL OTP Verify Warning]:', err.message);
   }
 
   if (entry && entry.otp !== cleanOtp) {
@@ -193,13 +176,9 @@ exports.sendOtp = async (req, res) => {
     }
   };
 
-  // Wait maximum 1.5 seconds for SMS dispatch, but respond immediately so client does not time out
-  await Promise.race([
-    dispatchSms(),
-    new Promise(resolve => setTimeout(resolve, 1500))
-  ]);
+  // Trigger SMS Gateway dispatch asynchronously so client responds instantly
+  dispatchSms();
 
-  // Return success response without leaking OTP
   return res.json({ 
     success: true, 
     message: 'OTP sent successfully!'
