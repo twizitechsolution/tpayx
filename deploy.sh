@@ -25,12 +25,16 @@ npm install --production
 # 3. Build Frontend
 echo "\n>>> 3/5 Building Frontend (Web Landing & App)..."
 cd ../frontend
+chattr -i /www/wwwroot/tpayx/frontend/dist/.user.ini 2>/dev/null || true
+chattr -i dist/.user.ini 2>/dev/null || true
 npm install
 npm run build
 
 # 4. Build Admin Panel
 echo "\n>>> 4/5 Building Admin Panel..."
 cd ../admin-panel
+chattr -i /www/wwwroot/tpayx/admin-panel/dist/.user.ini 2>/dev/null || true
+chattr -i dist/.user.ini 2>/dev/null || true
 npm install
 npm run build
 
