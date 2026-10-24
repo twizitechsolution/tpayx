@@ -7,8 +7,8 @@
     <title>TpayX - Fast. Secure. Simple.</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="./assets/index-CVMZi8sX.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CKXErF3w.css">
+    <script type="module" crossorigin src="/assets/index-CVMZi8sX.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CKXErF3w.css">
 <style>
   * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -134,6 +134,27 @@
     padding-bottom: max(32px, env(safe-area-inset-bottom)) !important;
     border-top-left-radius: 28px !important;
     border-top-right-radius: 28px !important;
+  }
+  /* Responsive & Centered Modal Overlays with Safe Area Inset */
+  .modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 9999 !important;
+    background: rgba(15, 23, 42, 0.72) !important;
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+    display: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 12px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+  .modal-overlay.show {
+    display: flex !important;
   }
 </style>
 </head>

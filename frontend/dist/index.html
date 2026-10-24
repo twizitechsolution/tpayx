@@ -135,8 +135,28 @@
     border-top-left-radius: 28px !important;
     border-top-right-radius: 28px !important;
   }
+  /* Responsive & Centered Modal Overlays with Safe Area Inset */
+  .modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 9999 !important;
+    background: rgba(15, 23, 42, 0.72) !important;
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+    display: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 12px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+  .modal-overlay.show {
+    display: flex !important;
+  }
 </style>
-  <script type="module" crossorigin src="/assets/index-Dezn_h7o.js"></script>
 </head>
   <body class="bg-[#f5f7fa] m-0 p-0 w-full min-h-screen">
     <div id="root" class="w-full min-h-screen"></div>

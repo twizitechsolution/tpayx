@@ -7,8 +7,8 @@
     <title>TpayX - Fast. Secure. Simple.</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="./assets/index-CVMZi8sX.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CKXErF3w.css">
+    <script type="module" crossorigin src="/assets/index-CVMZi8sX.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CKXErF3w.css">
 <style>
   * { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
   html, body {
@@ -32,7 +32,7 @@
     flex: 1 !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    padding-top: max(48px, env(safe-area-inset-top)) !important;
+    padding-top: max(32px, env(safe-area-inset-top)) !important;
     padding-bottom: 84px !important;
     -webkit-overflow-scrolling: touch !important;
   }
@@ -61,6 +61,100 @@
     background: #ffffff !important;
     border-top: 1px solid #f1f5f9 !important;
     box-shadow: 0 -4px 16px rgba(0,0,0,0.05) !important;
+    display: flex !important;
+    justify-content: space-around !important;
+    align-items: center !important;
+    flex-shrink: 0 !important;
+    position: relative !important;
+  }
+  .nav-item {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    width: 60px !important;
+    color: #94a3b8 !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+  }
+  .nav-item.active {
+    color: #2563eb !important;
+  }
+  .nav-item i, .nav-item svg {
+    width: 22px !important;
+    height: 22px !important;
+    font-size: 20px !important;
+    display: block !important;
+    flex-shrink: 0 !important;
+  }
+  .upi-circle {
+    width: 44px !important;
+    height: 44px !important;
+    background: #2563eb !important;
+    border-radius: 50% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin-bottom: -12px !important;
+    transform: translateY(-12px) !important;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.35) !important;
+    flex-shrink: 0 !important;
+  }
+  .btn-primary {
+    border-radius: 14px !important;
+    padding: 13px 16px !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3) !important;
+  }
+  .input-field {
+    border-radius: 12px !important;
+    padding: 13px 16px !important;
+    font-size: 14px !important;
+  }
+  /* Auth Screen Alignments & Elimination of Dark Patch */
+  div[style*="0f172a"] {
+    background: linear-gradient(to bottom, #0f172a 0px, #0f172a 130px, #ffffff 130px, #ffffff 100%) !important;
+  }
+  div[style*="0f172a"] .scroll-area,
+  .auth-scroll-area {
+    padding-top: max(16px, env(safe-area-inset-top)) !important;
+    padding-bottom: 0px !important;
+  }
+  div[style*="0f172a"] .bg-white.rounded-t-3xl,
+  .auth-card {
+    min-height: calc(100vh - 120px) !important;
+    min-height: calc(100dvh - 120px) !important;
+    margin-top: 10px !important;
+    padding-bottom: max(32px, env(safe-area-inset-bottom)) !important;
+    border-top-left-radius: 28px !important;
+    border-top-right-radius: 28px !important;
+  }
+  /* Responsive & Centered Modal Overlays with Safe Area Inset */
+  .modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    z-index: 9999 !important;
+    background: rgba(15, 23, 42, 0.72) !important;
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+    display: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 12px !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+  .modal-overlay.show {
+    display: flex !important;
   }
 </style>
 </head>

@@ -205,51 +205,66 @@ exports.getPaymentQuote = async (req, res) => {
     if (assetType === 'INR') {
       loadDb();
 
-      const currentUser = (dbData.users || []).find(u => u.id == userId) || {};
-      const eligibleUsers = dbData.users.filter(u => {
-        // STRICT SELF-MATCHING PREVENTION: Buyer can NEVER be their own seller/receiver
-        if (
-          String(u.id) === String(userId) ||
-          Number(u.id) === Number(userId) ||
-          (currentUser.mobile && u.mobile && u.mobile === currentUser.mobile) ||
-          (currentUser.uid && u.uid && u.uid === currentUser.uid) ||
-          Number(u.id) === 1 ||
-          u.is_blocked
-        ) {
-          return false;
+      // 1. Direct MySQL Query to find users whose T-Coin (bcoin_balance) wallet balance exceeds or equals required amount
+      let candidateUsers = [];
+      try {
+        const dbUsers = await query.all(`
+          SELECT u.id, u.uid, u.mobile, u.username, u.bcoin_balance, u.inr_balance,
+                 b.id as bank_id, b.account_holder, b.bank_name, b.account_number, b.ifsc_code, b.upi_id
+          FROM users u
+          LEFT JOIN bank_accounts b ON b.user_id = u.id AND (b.status = 'Active' OR b.status IS NULL OR b.status = '')
+          WHERE u.id != ?
+            AND u.is_blocked = 0
+            AND u.role != 'admin'
+            AND u.id != 1
+            AND u.bcoin_balance >= ?
+          ORDER BY RAND()
+        `, [userId, amtNum]);
+        if (Array.isArray(dbUsers) && dbUsers.length > 0) {
+          candidateUsers = dbUsers;
         }
+      } catch (err) {
+        console.warn('[P2P Match] MySQL query fallback:', err.message);
+      }
 
-        // 1. Check if user already has an active, unfinalized sales order
-        const hasActiveSalesOrder = (dbData.orders || []).some(o => 
-          o.receiver_id == u.id && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
-        );
-        if (hasActiveSalesOrder) return false;
+      // If MySQL query returned empty (e.g. offline dev or unhydrated), check dbData.users
+      if (candidateUsers.length === 0) {
+        candidateUsers = (dbData.users || [])
+          .filter(u => Number(u.id) !== Number(userId) && Number(u.id) !== 1 && !u.is_blocked && Number(u.bcoin_balance || 0) >= amtNum)
+          .map(u => {
+            const bank = (dbData.bank_accounts || []).find(b => b.user_id == u.id && b.status === 'Active') || {};
+            return { ...u, ...bank };
+          });
+      }
 
-        // 2. Check if user is currently reserved in an active, unexpired quote
-        const now = new Date();
+      // 2. Filter out users who already have an active unfinalized sales order in MySQL
+      let busyUserIds = new Set();
+      try {
+        const busyOrders = await query.all(`
+          SELECT receiver_id, seller_id FROM orders 
+          WHERE status IN ('Pending', 'Confirming', 'Admin Review', 'Disputed')
+        `);
+        if (Array.isArray(busyOrders)) {
+          busyOrders.forEach(o => {
+            if (o.receiver_id) busyUserIds.add(Number(o.receiver_id));
+            if (o.seller_id) busyUserIds.add(Number(o.seller_id));
+          });
+        }
+      } catch (e) {}
+
+      const nowTime = Date.now();
+      const eligibleUsers = candidateUsers.filter(u => {
+        // STRICT SELF-MATCHING PREVENTION: Buyer can NEVER be their own seller/receiver
+        if (Number(u.id) === Number(userId) || String(u.id) === String(userId)) return false;
+        if (busyUserIds.has(Number(u.id))) return false;
+
+        // Check if user is currently reserved in an active, unexpired quote
         const hasActiveQuote = Object.values(dbData.quotes || {}).some(q => 
-          q && q.receiverId == u.id && q.timerExpiry && now < new Date(q.timerExpiry)
+          q && Number(q.receiverId) === Number(u.id) && q.timerExpiry && nowTime < new Date(q.timerExpiry).getTime()
         );
         if (hasActiveQuote) return false;
-        
-        const bcoinBalance = Number(u.bcoin_balance || 0);
-        if (bcoinBalance < 200) return false;
 
-        const pendingWithdrawalTotal = (dbData.withdrawals || [])
-          .filter(w => w.user_id == u.id && w.status === 'Pending')
-          .reduce((sum, w) => sum + w.amount_pending, 0);
-
-        const activeMatchTotal = (dbData.orders || [])
-          .filter(o => o.receiver_id == u.id && ['Pending', 'Confirming', 'Disputed', 'Admin Review'].includes(o.status))
-          .reduce((sum, o) => {
-            if (o.withdrawal_id) return sum;
-            return sum + o.amount;
-          }, 0);
-          
-        const availableBcoin = bcoinBalance - (pendingWithdrawalTotal + activeMatchTotal);
-        const hasActiveBank = (dbData.bank_accounts || []).some(b => b.user_id == u.id && b.status === 'Active');
-        
-        return availableBcoin >= amtNum && availableBcoin >= 200 && hasActiveBank;
+        return true;
       });
 
       let matchedUser = null;
@@ -260,7 +275,7 @@ exports.getPaymentQuote = async (req, res) => {
         const specificW = (dbData.withdrawals || []).find(w => w.id == requestedWithdrawalId && w.status === 'Pending');
         // STRICT SELF-MATCHING PREVENTION: Ignore if withdrawal belongs to current user
         if (specificW && Number(specificW.user_id) !== Number(userId) && String(specificW.user_id) !== String(userId)) {
-          const specificSeller = (dbData.users || []).find(u => u.id == specificW.user_id && !u.is_blocked && u.id != userId);
+          const specificSeller = eligibleUsers.find(u => Number(u.id) === Number(specificW.user_id));
           if (specificSeller) {
             matchedUser = specificSeller;
             withdrawalId = specificW.id;
@@ -275,7 +290,7 @@ exports.getPaymentQuote = async (req, res) => {
 
         // Check if selected user has a matching pending withdrawal
         const userWithdrawal = (dbData.withdrawals || []).find(w => 
-          w.user_id == matchedUser.id && w.user_id != userId && w.status === 'Pending' && w.amount_pending >= amtNum && w.amount_pending >= 200
+          Number(w.user_id) === Number(matchedUser.id) && Number(w.user_id) !== Number(userId) && w.status === 'Pending' && w.amount_pending >= amtNum
         );
         if (userWithdrawal) {
           withdrawalId = userWithdrawal.id;
@@ -286,22 +301,16 @@ exports.getPaymentQuote = async (req, res) => {
         receiverId = matchedUser.id;
         timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         
-        const activeBanks = (dbData.bank_accounts || []).filter(b => b.user_id == receiverId && b.user_id != userId && b.status === 'Active');
-        const bank = activeBanks.length > 0 
-          ? activeBanks[Math.floor(Math.random() * activeBanks.length)]
-          : ((dbData.bank_accounts || []).find(b => b.user_id == receiverId && b.user_id != userId) || {});
-
-        const receiverUser = matchedUser;
         const settings = dbData.settings || {};
         const fallbackUpi = settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : 'merchant@upi';
 
         receiverDetails = {
-          receiver_name: bank.account_holder || receiverUser.username || 'P2P Merchant',
-          bank_name: bank.bank_name || 'Bank',
-          account_number: bank.account_number || 'N/A',
-          ifsc_code: bank.ifsc_code || 'N/A',
-          upi_id: bank.upi_id || (receiverUser.mobile ? `${receiverUser.mobile}@upi` : fallbackUpi),
-          mobile: receiverUser.mobile
+          receiver_name: matchedUser.account_holder || matchedUser.username || `Seller ${matchedUser.uid || matchedUser.id}`,
+          bank_name: matchedUser.bank_name || 'Bank',
+          account_number: matchedUser.account_number || 'N/A',
+          ifsc_code: matchedUser.ifsc_code || 'N/A',
+          upi_id: matchedUser.upi_id || (matchedUser.mobile ? `${matchedUser.mobile}@upi` : fallbackUpi),
+          mobile: matchedUser.mobile
         };
       } else {
         // Fallback to Admin (ID 1) with bank & UPI rotation

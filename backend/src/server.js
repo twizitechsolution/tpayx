@@ -1262,17 +1262,16 @@ app.post('/api/orders/:orderId/p2p-dispute', authMiddleware, async (req, res) =>
       return res.status(404).json({ error: 'Receiver user not found' });
     }
 
-    if (receiver.bcoin_balance < order.amount) {
-      return res.status(400).json({ error: 'Insufficient balance in your T-Coin wallet to raise a dispute.' });
-    }
-
-    // Deduct the disputed amount immediately from their T-Coin wallet (to block/freeze it)
-    receiver.bcoin_balance = Math.max(0, receiver.bcoin_balance - order.amount);
-
-    // Set order to Disputed
+    // P2P DISPUTE ESCALATION:
+    // As per system logic, when seller raises dispute, matter is escalated to Admin.
+    // Funds remain on hold: depositor does NOT get credit, and money is NOT yet deducted from seller.
+    // Set order to Disputed in memory and MySQL
     order.status = 'Disputed';
+    try {
+      await query.run('UPDATE orders SET status = "Disputed" WHERE order_id = ?', [order.order_id]);
+    } catch (dbErr) {}
 
-    // Add dispute record
+    // Add dispute record to memory and MySQL
     const newDisId = ++idTrackers.disputes;
     dbData.disputes.push({
       id: newDisId,
@@ -1284,25 +1283,16 @@ app.post('/api/orders/:orderId/p2p-dispute', authMiddleware, async (req, res) =>
       created_at: new Date().toISOString()
     });
 
-    // Log a temporary Withdraw transaction for receiver showing it as Disputed
-    const newTxId = ++idTrackers.transactions;
-    const bank = dbData.bank_accounts.find(b => b.user_id == receiver.id && b.status === 'Active') || { bank_name: 'Bank', account_number: 'N/A', account_holder: receiver.username };
-    const desc = `Bank: ${bank.bank_name}, A/C: ${bank.account_number}, Holder: ${bank.account_holder}, UTR: ${order.utr || 'N/A'}, TXID: MWD_${Date.now()}, Note: P2P match withdrawal disputed for Order ${order.order_id}`;
-    dbData.transactions.push({
-      id: newTxId,
-      user_id: receiver.id,
-      type: 'Withdraw',
-      amount: -order.amount,
-      balance_after: receiver.bcoin_balance,
-      status: 'Disputed',
-      order_id: order.order_id,
-      description: desc,
-      created_at: new Date().toISOString()
-    });
+    try {
+      await query.run(`
+        INSERT INTO disputes (user_id, user_mobile, subject, description, status, created_at)
+        VALUES (?, ?, ?, ?, 'Pending', NOW())
+      `, [req.user.id, receiver.mobile, `P2P Dispute on Order #${order.order_id}`, `Reason: ${reason}. Order Amount: ₹${order.amount}. UTR: ${order.utr || 'N/A'}`]);
+    } catch (disErr) {}
 
     await saveDbAsync();
 
-    return res.json({ success: true, message: 'Dispute submitted successfully and sent to admin review.' });
+    return res.json({ success: true, message: 'Dispute submitted successfully and sent to admin review. Funds remain on hold until verification.' });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -1421,35 +1411,39 @@ app.post('/api/admin/disputes/:disputeId/resolve', adminAuth, async (req, res) =
 
     if (action === 'approve') {
       // Approve: Depositor paid correctly. Release funds.
+      // Deduct from seller's wallet now:
+      receiver.bcoin_balance = Math.max(0, Number(receiver.bcoin_balance || 0) - Number(order.amount || 0));
+      try {
+        await query.run('UPDATE users SET bcoin_balance = ? WHERE id = ?', [receiver.bcoin_balance, receiver.id]);
+      } catch (e) {}
+
       order.status = 'Completed';
       dispute.status = 'Resolved_Approved';
+      try {
+        await query.run('UPDATE orders SET status = "Completed" WHERE order_id = ?', [order.order_id]);
+        await query.run('UPDATE disputes SET status = "Resolved_Approved" WHERE id = ?', [dispute.id]);
+      } catch (e) {}
+
       buyer.inr_balance += order.quota; // Credit buyer with plan quota/earnings
       buyer.bcoin_balance += order.amount; // Credit buyer with T-Coin principal balance
+      try {
+        await query.run('UPDATE users SET inr_balance = inr_balance + ?, bcoin_balance = bcoin_balance + ? WHERE id = ?', [order.quota, order.amount, buyer.id]);
+      } catch (e) {}
 
-      // Update the transaction log that was created during the dispute to success/completed state
-      const tx = dbData.transactions.find(t => t.user_id == receiver.id && t.type === 'Withdraw' && t.order_id === order.order_id);
-      if (tx) {
-        tx.status = 'Completed';
-        tx.description += ' (Approved by Admin)';
-      } else {
-        // Fallback in case dispute was raised without log (e.g. legacy/manually created)
-        if (receiver.bcoin_balance >= order.amount) {
-          receiver.bcoin_balance -= order.amount;
-        }
-        const newTxId = ++idTrackers.transactions;
-        const bank = dbData.bank_accounts.find(b => b.user_id == receiver.id && b.status === 'Active') || { bank_name: 'Bank', account_number: 'N/A', account_holder: receiver.username };
-        const desc = `Bank: ${bank.bank_name}, A/C: ${bank.account_number}, Holder: ${bank.account_holder}, UTR: ${order.utr}, TXID: MWD_${Date.now()}, Note: P2P dispute release withdrawal completed for Order ${order.order_id}`;
-        dbData.transactions.push({
-          id: newTxId,
-          user_id: receiver.id,
-          type: 'Withdraw',
-          amount: -order.amount,
-          balance_after: receiver.bcoin_balance,
-          status: 'Completed',
-          description: desc,
-          created_at: new Date().toISOString()
-        });
-      }
+      // Log transaction for seller
+      const newTxId = ++idTrackers.transactions;
+      const bank = dbData.bank_accounts.find(b => b.user_id == receiver.id && b.status === 'Active') || { bank_name: 'Bank', account_number: 'N/A', account_holder: receiver.username };
+      const desc = `Bank: ${bank.bank_name}, A/C: ${bank.account_number}, Holder: ${bank.account_holder}, UTR: ${order.utr || 'N/A'}, TXID: MWD_${Date.now()}, Note: P2P dispute approved by Admin for Order ${order.order_id}`;
+      dbData.transactions.push({
+        id: newTxId,
+        user_id: receiver.id,
+        type: 'Withdraw',
+        amount: -order.amount,
+        balance_after: receiver.bcoin_balance,
+        status: 'Completed',
+        description: desc,
+        created_at: new Date().toISOString()
+      });
 
       // Update matched withdrawal request
       if (order.withdrawal_id) {
@@ -1489,6 +1483,9 @@ app.post('/api/admin/disputes/:disputeId/resolve', adminAuth, async (req, res) =
             parent.inr_balance += commAmount;
             parent.total_earnings += commAmount;
             parent.today_profit += commAmount;
+            try {
+              await query.run('UPDATE users SET inr_balance = inr_balance + ?, total_earnings = total_earnings + ?, today_profit = today_profit + ? WHERE id = ?', [commAmount, commAmount, commAmount, parent.id]);
+            } catch (e) {}
 
             const commTxId = ++idTrackers.transactions;
             dbData.transactions.push({
@@ -1508,19 +1505,14 @@ app.post('/api/admin/disputes/:disputeId/resolve', adminAuth, async (req, res) =
       }
 
     } else {
-      // Reject: Depositor did NOT pay. Cancel order
-      order.status = 'Canceled';
-      dispute.status = 'Resolved_Refunded';
-
-      // Refund the receiver since we deducted their T-Coins when they raised the dispute
-      receiver.bcoin_balance += order.amount;
-
-      // Find the disputed Withdraw transaction and set its status to 'Canceled'
-      const tx = dbData.transactions.find(t => t.user_id == receiver.id && t.type === 'Withdraw' && t.order_id === order.order_id);
-      if (tx) {
-        tx.status = 'Canceled';
-        tx.description += ' (Canceled by Admin)';
-      }
+      // Reject: Depositor did NOT pay. Cancel order.
+      // Seller's wallet was never deducted, so it remains safe with seller.
+      order.status = 'Rejected';
+      dispute.status = 'Resolved_Rejected';
+      try {
+        await query.run('UPDATE orders SET status = "Rejected" WHERE order_id = ?', [order.order_id]);
+        await query.run('UPDATE disputes SET status = "Resolved_Rejected" WHERE id = ?', [dispute.id]);
+      } catch (e) {}
 
       // Restore matched withdrawal request pending balance
       if (order.withdrawal_id) {
