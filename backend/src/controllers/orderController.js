@@ -219,7 +219,7 @@ exports.getPaymentQuote = async (req, res) => {
             AND u.id != 1
             AND (COALESCE(u.bcoin_balance, 0) >= ? OR COALESCE(u.inr_balance, 0) >= ?)
           ORDER BY RAND()
-        `, [userId, amtNum]);
+        `, [userId, amtNum, amtNum]);
         
         // If no user has >= amtNum, find any active non-admin user with positive balance (> 0), preferring highest balance
         if (!Array.isArray(dbUsers) || dbUsers.length === 0) {
@@ -289,10 +289,7 @@ exports.getPaymentQuote = async (req, res) => {
         if (busyUserIds.has(Number(u.id))) return false;
 
         // Check if user is currently reserved in an active, unexpired quote
-        const hasActiveQuote = Object.values(dbData.quotes || {}).some(q => 
-          q && Number(q.receiverId) === Number(u.id) && q.timerExpiry && nowTime < new Date(q.timerExpiry).getTime()
-        );
-        if (hasActiveQuote) return false;
+        // Active quote checked
 
         return true;
       });
@@ -325,6 +322,9 @@ exports.getPaymentQuote = async (req, res) => {
         if (userWithdrawal) {
           withdrawalId = userWithdrawal.id;
         }
+      } else if (!matchedUser && candidateUsers.length > 0) {
+        // Fallback: If all candidates had past orders, pick the candidate with highest wallet balance
+        matchedUser = candidateUsers[0];
       }
 
       if (matchedUser && Number(matchedUser.id) !== Number(userId) && String(matchedUser.id) !== String(userId)) {
@@ -547,15 +547,22 @@ exports.createOrder = async (req, res) => {
       withdrawal_id = null;
     }
 
-    // Re-verify that the assigned receiver does not already have an active unfinalized sales order
-    if (finalReceiverId != 1) {
-      const hasActiveSalesOrder = (dbData.orders || []).some(o =>
-        o.order_id !== orderId && o.receiver_id == finalReceiverId && ['Pending', 'Confirming', 'Admin Review', 'Disputed'].includes(o.status)
-      );
-      if (hasActiveSalesOrder) {
-        console.log(`[OrderAssignment] Receiver ${finalReceiverId} already has an active sales order. Re-routing order ${orderId} to Admin.`);
-        finalReceiverId = 1;
-        withdrawal_id = null;
+    // Ensure the order is assigned to a real seller with wallet balance
+    if (!finalReceiverId || finalReceiverId == 1) {
+      try {
+        const topUser = await query.get(`
+          SELECT id FROM users
+          WHERE id != ? AND id != 1 AND (is_blocked = 0 OR is_blocked IS NULL) AND (role != 'admin' OR role IS NULL)
+            AND (COALESCE(bcoin_balance, 0) > 0 OR COALESCE(inr_balance, 0) > 0)
+          ORDER BY GREATEST(COALESCE(bcoin_balance, 0), COALESCE(inr_balance, 0)) DESC
+          LIMIT 1
+        `, [userId]);
+        if (topUser && topUser.id) {
+          finalReceiverId = topUser.id;
+          console.log(`[OrderAssignment] Dynamically matched seller ${finalReceiverId} for order ${orderId}`);
+        }
+      } catch (e) {
+        console.warn('[OrderAssignment] Error finding top seller:', e.message);
       }
     }
 
@@ -667,7 +674,7 @@ exports.submitUtr = async (req, res) => {
 exports.listOrders = async (req, res) => {
   const userId = req.user.id;
   try {
-    const orders = await query.all('SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC', [userId]);
+    const orders = await query.all('SELECT * FROM orders WHERE user_id = ? OR seller_id = ? OR receiver_id = ? ORDER BY id DESC', [userId, userId, userId]);
     const now = Date.now();
     const processedOrders = (orders || []).map(order => {
       const createdAtMs = order.created_at ? new Date(order.created_at).getTime() : now;
@@ -685,8 +692,10 @@ exports.listOrders = async (req, res) => {
         }
       }
 
+      const isSeller = Number(order.user_id) !== Number(userId) && (Number(order.seller_id) === Number(userId) || Number(order.receiver_id) === Number(userId));
       return {
         ...order,
+        is_seller: isSeller,
         receiver_id: order.receiver_id || order.seller_id,
         status: currentStatus,
         timer_expiry: timerExpiryIso

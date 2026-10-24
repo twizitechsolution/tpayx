@@ -1144,7 +1144,7 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
         `SELECT o.*, u.username as buyer_username, u.uid as buyer_uid, u.mobile as buyer_mobile 
          FROM orders o 
          LEFT JOIN users u ON o.user_id = u.id 
-         WHERE (o.seller_id = ? OR o.receiver_id = ?) AND o.user_id != ? AND o.status IN ("Confirming", "Pending") 
+         WHERE (o.seller_id = ? OR o.receiver_id = ?) AND o.user_id != ? AND o.status IN ("Confirming", "Pending", "Admin Review") 
          ORDER BY o.id DESC`,
         [userId, userId, userId]
       ) || [];
@@ -1153,7 +1153,7 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
         `SELECT o.*, u.username as buyer_username, u.uid as buyer_uid, u.mobile as buyer_mobile 
          FROM orders o 
          LEFT JOIN users u ON o.user_id = u.id 
-         WHERE o.seller_id = ? AND o.user_id != ? AND o.status IN ("Confirming", "Pending") 
+         WHERE o.seller_id = ? AND o.user_id != ? AND o.status IN ("Confirming", "Pending", "Admin Review") 
          ORDER BY o.id DESC`,
         [userId, userId]
       ) || [];
@@ -1162,15 +1162,15 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
     const now = Date.now();
     const enrichedRequests = [];
     for (const r of requestsRows) {
-      const createdAtMs = r.created_at ? new Date(r.created_at).getTime() : now;
-      const expiryMs = r.timer_expiry ? new Date(r.timer_expiry).getTime() : (createdAtMs + 15 * 60 * 1000);
-      
-      // If 15 minutes expired without receiver confirmation, escalate order to Admin Review
-      if (now > expiryMs) {
-        query.run('UPDATE orders SET status = "Admin Review" WHERE id = ?', [r.id]).catch(() => {});
-        continue;
+      let createdAtMs = now;
+      if (r.created_at) {
+        const s = String(r.created_at);
+        createdAtMs = s.endsWith('Z') ? new Date(s).getTime() : new Date(s.replace(' ', 'T') + 'Z').getTime();
+        if (isNaN(createdAtMs)) createdAtMs = new Date(r.created_at).getTime();
       }
+      const expiryMs = r.timer_expiry ? new Date(r.timer_expiry).getTime() : (createdAtMs + 15 * 60 * 1000);
 
+      // Keep orders visible to seller so they can review, approve, or dispute!
       enrichedRequests.push({
         ...r,
         receiver_id: r.receiver_id || r.seller_id,
