@@ -27,7 +27,7 @@ exports.addBankAccount = async (req, res) => {
   // IFSC validation: 11 characters, uppercase alphanumeric, 5th character must be 0
   const cleanIfsc = ifscCode.trim().toUpperCase();
   if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(cleanIfsc)) {
-    return res.status(400).json({ error: 'Please enter a valid 11-digit IFSC Code (e.g. SBIN0001234)' });
+    return res.status(400).json({ error: 'Please enter a valid 11-digit IFSC Code (e.g. )' });
   }
 
   // UPI ID validation format

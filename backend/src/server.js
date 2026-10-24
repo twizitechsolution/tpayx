@@ -562,11 +562,11 @@ app.get('/api/admin/orders', adminAuth, async (req, res) => {
       } else {
         const settings = dbData.settings || {};
         const fallbackUpi = settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : 'tpayx@upi';
-        receiver_mobile = 'Official Desk';
+        receiver_mobile = '';
         receiver_uid = 'ADMIN';
-        receiver_name = settings.admin_receiver_name || 'TpayX Official Desk';
+        receiver_name = settings.admin_receiver_name || 'P2P Desk';
         receiver_bank = settings.admin_bank_name || 'State Bank of India';
-        receiver_account = settings.admin_account_number || '389201948572';
+        receiver_account = settings.admin_account_number || '';
         receiver_upi = fallbackUpi;
       }
 

@@ -208,18 +208,35 @@ exports.getPaymentQuote = async (req, res) => {
       // 1. Direct MySQL Query to find users whose T-Coin (bcoin_balance) wallet balance exceeds or equals required amount
       let candidateUsers = [];
       try {
-        const dbUsers = await query.all(`
+        let dbUsers = await query.all(`
           SELECT u.id, u.uid, u.mobile, u.username, u.bcoin_balance, u.inr_balance,
                  b.id as bank_id, b.account_holder, b.bank_name, b.account_number, b.ifsc_code, b.upi_id
           FROM users u
-          LEFT JOIN bank_accounts b ON b.user_id = u.id AND (b.status = 'Active' OR b.status IS NULL OR b.status = '')
+          LEFT JOIN bank_accounts b ON b.user_id = u.id AND (LOWER(b.status) = 'active' OR b.status IS NULL OR b.status = '')
           WHERE u.id != ?
-            AND u.is_blocked = 0
-            AND u.role != 'admin'
+            AND (u.is_blocked = 0 OR u.is_blocked IS NULL)
+            AND (u.role != 'admin' OR u.role IS NULL)
             AND u.id != 1
-            AND u.bcoin_balance >= ?
+            AND (COALESCE(u.bcoin_balance, 0) >= ? OR COALESCE(u.inr_balance, 0) >= ?)
           ORDER BY RAND()
         `, [userId, amtNum]);
+        
+        // If no user has >= amtNum, find any active non-admin user with positive balance (> 0), preferring highest balance
+        if (!Array.isArray(dbUsers) || dbUsers.length === 0) {
+          dbUsers = await query.all(`
+            SELECT u.id, u.uid, u.mobile, u.username, u.bcoin_balance, u.inr_balance,
+                   b.id as bank_id, b.account_holder, b.bank_name, b.account_number, b.ifsc_code, b.upi_id
+            FROM users u
+            LEFT JOIN bank_accounts b ON b.user_id = u.id AND (LOWER(b.status) = 'active' OR b.status IS NULL OR b.status = '')
+            WHERE u.id != ?
+              AND (u.is_blocked = 0 OR u.is_blocked IS NULL)
+              AND (u.role != 'admin' OR u.role IS NULL)
+              AND u.id != 1
+              AND (COALESCE(u.bcoin_balance, 0) > 0 OR COALESCE(u.inr_balance, 0) > 0)
+            ORDER BY GREATEST(COALESCE(u.bcoin_balance, 0), COALESCE(u.inr_balance, 0)) DESC
+            LIMIT 10
+          `, [userId]);
+        }
         if (Array.isArray(dbUsers) && dbUsers.length > 0) {
           candidateUsers = dbUsers;
         }
@@ -243,6 +260,7 @@ exports.getPaymentQuote = async (req, res) => {
         const busyOrders = await query.all(`
           SELECT seller_id, receiver_id FROM orders 
           WHERE status IN ('Pending', 'Confirming', 'Admin Review', 'Disputed')
+            AND (created_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE) OR status = 'Disputed')
         `);
         if (Array.isArray(busyOrders)) {
           busyOrders.forEach(o => {
@@ -338,21 +356,21 @@ exports.getPaymentQuote = async (req, res) => {
           ? adminBanks[Math.floor(Math.random() * adminBanks.length)]
           : {
               bank_name: settings.admin_bank_name || 'State Bank of India',
-              account_holder: settings.admin_receiver_name || 'TpayX Official Desk',
-              account_number: settings.admin_account_number || '389201948572',
-              ifsc_code: settings.admin_ifsc_code || 'SBIN0001234',
+              account_holder: settings.admin_receiver_name || 'P2P Desk',
+              account_number: settings.admin_account_number || '',
+              ifsc_code: settings.admin_ifsc_code || '',
               upi_id: fallbackUpi
             };
 
-        const receiverUser = (dbData.users || []).find(u => u.role === 'admin' || u.id == 1) || { mobile: 'Official Desk' };
+        const receiverUser = (dbData.users || []).find(u => u.role === 'admin' || u.id == 1) || { mobile: '' };
 
         receiverDetails = {
-          receiver_name: bank.account_holder || settings.admin_receiver_name || 'TpayX Official Desk',
+          receiver_name: bank.account_holder || settings.admin_receiver_name || 'P2P Desk',
           bank_name: bank.bank_name || settings.admin_bank_name || 'Bank',
           account_number: bank.account_number || settings.admin_account_number || 'N/A',
           ifsc_code: bank.ifsc_code || settings.admin_ifsc_code || 'N/A',
           upi_id: bank.upi_id || fallbackUpi,
-          mobile: receiverUser.mobile || 'Official Desk'
+          mobile: receiverUser.mobile || ''
         };
       }
     } else {
@@ -542,25 +560,32 @@ exports.createOrder = async (req, res) => {
     }
 
     // Build receiver details dynamically
-    const settings = dbData.settings || {};
-    const fallbackUpi = (settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : (settings.upi_id || 'tpayx@upi'));
+    let bank = null;
+    try {
+      bank = await query.get('SELECT * FROM bank_accounts WHERE user_id = ? AND (LOWER(status) = "active" OR status IS NULL OR status = "") LIMIT 1', [finalReceiverId]);
+    } catch (e) {}
+    if (!bank) {
+      bank = (dbData.bank_accounts || []).find(b => b.user_id == finalReceiverId && b.user_id != userId) || {};
+    }
 
-    const bank = (dbData.bank_accounts || []).find(b => b.user_id == finalReceiverId && b.user_id != userId && b.status === 'Active') ||
-      (dbData.bank_accounts || []).find(b => (b.user_id == 1 && b.status === 'Active')) || {
-      bank_name: settings.admin_bank_name || 'State Bank of India',
-      account_holder: settings.admin_receiver_name || 'TpayX Official Desk',
-      account_number: settings.admin_account_number || '389201948572',
-      ifsc_code: settings.admin_ifsc_code || 'SBIN0001234',
-      upi_id: fallbackUpi
-    };
-    const receiverUser = (dbData.users || []).find(u => u.id == finalReceiverId && u.id != userId) || (dbData.users || []).find(u => u.role === 'admin' || u.id == 1) || { mobile: 'Official Desk' };
+    let receiverUser = null;
+    try {
+      receiverUser = await query.get('SELECT * FROM users WHERE id = ?', [finalReceiverId]);
+    } catch (e) {}
+    if (!receiverUser) {
+      receiverUser = (dbData.users || []).find(u => u.id == finalReceiverId) || {};
+    }
+
+    const settings = dbData.settings || {};
+    const fallbackUpi = (settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : (settings.upi_id || ''));
+
     const receiverDetails = {
-      receiver_name: bank.account_holder || settings.admin_receiver_name || 'TpayX Official Desk',
+      receiver_name: bank.account_holder || receiverUser.username || settings.admin_receiver_name || 'P2P Seller',
       bank_name: bank.bank_name || settings.admin_bank_name || 'Bank',
       account_number: bank.account_number || settings.admin_account_number || 'N/A',
       ifsc_code: bank.ifsc_code || settings.admin_ifsc_code || 'N/A',
-      upi_id: bank.upi_id || fallbackUpi,
-      mobile: receiverUser.mobile || 'Official Desk'
+      upi_id: bank.upi_id || (receiverUser.mobile ? `${receiverUser.mobile}@upi` : fallbackUpi),
+      mobile: receiverUser.mobile || ''
     };
 
     // Save screenshot if provided

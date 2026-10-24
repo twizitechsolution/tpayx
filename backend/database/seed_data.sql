@@ -156,7 +156,7 @@ INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('winpey_api_secre
 INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('orders_repaired_v2', 'true', 'Global platform configuration') ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);
 INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('history_split_repaired', 'true', 'Global platform configuration') ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);
 INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('payment_mode', 'manual', 'Global platform configuration') ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);
-INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('upi_ids', '7790098808@ybl,demo@ybl,test@ybl,demo2@ybl,test3@ybl', 'Global platform configuration') ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);
+INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('upi_ids', '7790098808@ybl', 'Global platform configuration') ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);
 INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('deposit_commission_percent', '2.5', 'Global platform configuration') ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);
 INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('user_commission_percent', '2.5', 'Global platform configuration') ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);
 INSERT INTO `settings` (`key`, `value`, `description`) VALUES ('commission_percent', '2.5', 'Global platform configuration') ON DUPLICATE KEY UPDATE `value`=VALUES(`value`);
