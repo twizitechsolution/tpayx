@@ -674,7 +674,24 @@ exports.submitUtr = async (req, res) => {
 exports.listOrders = async (req, res) => {
   const userId = req.user.id;
   try {
-    const orders = await query.all('SELECT * FROM orders WHERE user_id = ? OR seller_id = ? OR receiver_id = ? ORDER BY id DESC', [userId, userId, userId]);
+    const userMobile = req.user && req.user.mobile ? String(req.user.mobile).trim() : '';
+    const userUid = req.user && req.user.uid ? String(req.user.uid).trim() : '';
+    let orders = [];
+    try {
+      orders = await query.all(`
+        SELECT o.*, u.mobile as user_mobile, u.uid as user_uid
+        FROM orders o
+        LEFT JOIN users u ON o.user_id = u.id
+        WHERE o.user_id = ?
+           OR (? != '' AND (u.mobile = ? OR o.user_mobile = ?))
+           OR (? != '' AND (u.uid = ? OR o.user_uid = ?))
+           OR o.seller_id = ?
+           OR o.receiver_id = ?
+        ORDER BY o.id DESC
+      `, [userId, userMobile, userMobile, userMobile, userUid, userUid, userUid, userId, userId]) || [];
+    } catch (dbErr) {
+      orders = await query.all('SELECT * FROM orders WHERE user_id = ? OR seller_id = ? OR receiver_id = ? ORDER BY id DESC', [userId, userId, userId]) || [];
+    }
     const now = Date.now();
     const processedOrders = (orders || []).map(order => {
       const createdAtMs = order.created_at ? new Date(order.created_at).getTime() : now;
@@ -1086,3 +1103,5 @@ exports.winpeyCreatePayout = async (payoutId, amount, bank, phone) => {
   });
 };
 
+
+exports.executeOrderApproval = executeOrderApproval;

@@ -72,6 +72,15 @@ class ErrorBoundary extends React.Component {
 }
 
 // Live 15-Minute Countdown Timer Component for Deposit Orders Queue
+const parseUtcDate = (val) => {
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  const s = String(val).trim();
+  if (s.endsWith('Z')) return new Date(s).getTime();
+  if (s.includes('T')) return new Date(s.endsWith('Z') ? s : s + 'Z').getTime();
+  return new Date(s.replace(' ', 'T') + 'Z').getTime();
+};
+
 const OrderTimer = ({ createdAt, timerExpiry, status }) => {
   const [timeLeft, setTimeLeft] = useState('');
   const [isExpired, setIsExpired] = useState(false);
@@ -81,11 +90,11 @@ const OrderTimer = ({ createdAt, timerExpiry, status }) => {
       try {
         let targetTime = 0;
         if (timerExpiry) {
-          const t = new Date(timerExpiry).getTime();
+          const t = parseUtcDate(timerExpiry);
           if (!isNaN(t)) targetTime = t;
         }
         if (!targetTime && createdAt) {
-          const c = new Date(createdAt).getTime();
+          const c = parseUtcDate(createdAt);
           if (!isNaN(c)) targetTime = c + 15 * 60 * 1000;
         }
 
@@ -130,7 +139,7 @@ const OrderTimer = ({ createdAt, timerExpiry, status }) => {
           : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 animate-pulse'
       }`}>
         <i className="fas fa-clock text-[9px]" />
-        {timeLeft || '15m Expired'}
+        {status === 'Admin Review' ? 'Admin Review' : (timeLeft || '15m Expired')}
       </span>
     </div>
   );
@@ -1558,11 +1567,16 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
                         </td>
                         <td className="px-6 py-4">
                           <div className="space-y-0.5 text-[11px]">
-                            <span className="font-bold text-emerald-400 block">{order.receiver_name || 'Official Desk'}</span>
-                            <span className="text-slate-400 font-mono block text-[10px]">Mob: {order.receiver_mobile || '8763527330'}</span>
-                            <span className="text-slate-500 text-[10px] block leading-tight">
+                            <span className="font-bold text-emerald-400 block">{order.receiver_name || 'P2P Seller'}</span>
+                            <span className="text-slate-300 font-mono block text-[10px]">Mob: {order.receiver_mobile || 'N/A'}</span>
+                            <span className="text-slate-400 text-[10px] block leading-tight">
                               {bankName} (A/C: {accNumber})
                             </span>
+                            {order.receiver_upi && order.receiver_upi !== 'N/A' && (
+                              <span className="text-violet-400 font-mono text-[10px] block font-semibold">
+                                UPI: {order.receiver_upi}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-center">

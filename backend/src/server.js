@@ -549,20 +549,31 @@ app.get('/api/admin/orders', adminAuth, async (req, res) => {
       let receiver_account = 'N/A';
       let receiver_upi = 'N/A';
 
-      if (recId && recId != 1) {
-        const receiverUser = userMap.get(Number(recId));
-        const bankAcc = allBanks.find(b => b.user_id == recId && b.status === 'Active') ||
-                        allBanks.find(b => b.user_id == recId);
-        receiver_mobile = receiverUser ? receiverUser.mobile : 'N/A';
+      let resolvedRecId = recId;
+      // If recId is 1 or missing, find seller matched in quotes or fallback to top seller
+      if (!resolvedRecId || resolvedRecId == 1) {
+        if (dbData.quotes && dbData.quotes[order.order_id] && dbData.quotes[order.order_id].receiverId != 1) {
+          resolvedRecId = dbData.quotes[order.order_id].receiverId;
+        } else {
+          const matchedBank = allBanks.find(b => b.user_id != 1 && (b.status === 'Active' || !b.status));
+          if (matchedBank) resolvedRecId = matchedBank.user_id;
+        }
+      }
+
+      if (resolvedRecId && resolvedRecId != 1) {
+        const receiverUser = userMap.get(Number(resolvedRecId));
+        const bankAcc = allBanks.find(b => b.user_id == resolvedRecId && (b.status === 'Active' || !b.status)) ||
+                        allBanks.find(b => b.user_id == resolvedRecId);
+        receiver_mobile = receiverUser ? receiverUser.mobile : (bankAcc ? bankAcc.mobile || 'N/A' : 'N/A');
         receiver_uid = receiverUser ? receiverUser.uid : 'N/A';
-        receiver_name = bankAcc ? bankAcc.account_holder : (receiverUser ? (receiverUser.username || 'P2P Seller') : 'P2P Seller');
+        receiver_name = bankAcc ? bankAcc.account_holder : (receiverUser ? receiverUser.username : 'P2P Seller');
         receiver_bank = bankAcc ? bankAcc.bank_name : 'Bank';
         receiver_account = bankAcc ? bankAcc.account_number : 'N/A';
-        receiver_upi = bankAcc ? bankAcc.upi_id : (receiverUser ? `${receiverUser.mobile}@upi` : 'N/A');
+        receiver_upi = bankAcc && bankAcc.upi_id ? bankAcc.upi_id : (receiverUser ? `${receiverUser.mobile}@upi` : 'N/A');
       } else {
         const settings = dbData.settings || {};
-        const fallbackUpi = settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : 'tpayx@upi';
-        receiver_mobile = '';
+        const fallbackUpi = settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : (settings.upi_id || 'tpayx@upi');
+        receiver_mobile = settings.admin_mobile || '8763527330';
         receiver_uid = 'ADMIN';
         receiver_name = settings.admin_receiver_name || 'P2P Desk';
         receiver_bank = settings.admin_bank_name || 'State Bank of India';
@@ -1222,6 +1233,7 @@ app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => 
   try {
     const { orderId } = req.params;
     const userId = Number(req.user.id);
+    const { reason, proof } = req.body;
 
     let order = null;
     try {
@@ -1238,8 +1250,53 @@ app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => 
       return res.status(400).json({ error: 'Order is not in pending confirming status' });
     }
 
+    // Save proof document if uploaded
+    let proofPath = null;
+    if (proof) {
+      const { saveBase64File } = require('./db');
+      proofPath = saveBase64File(proof, 'dispute_proof');
+    }
+
+    // 1. Update order status to Admin Review
     await query.run('UPDATE orders SET status = "Admin Review" WHERE id = ?', [order.id]);
-    return res.json({ success: true, message: 'Order rejected and sent to Admin Review.' });
+
+    // 2. Hold/deduct dispute amount from seller wallet until admin reaches decision
+    await query.run('UPDATE users SET bcoin_balance = GREATEST(0, bcoin_balance - ?) WHERE id = ?', [Number(order.amount || 0), userId]);
+
+    // 3. Create entry in disputes table
+    const disputeReason = reason && String(reason).trim() ? String(reason).trim() : 'Payment not received in bank/UPI';
+    try {
+      await query.run(
+        'INSERT INTO disputes (order_id, raiser_id, reason, proof_path, status, created_at) VALUES (?, ?, ?, ?, "Pending", NOW())',
+        [order.order_id, userId, disputeReason, proofPath || '']
+      );
+    } catch (disErr) {
+      console.warn('[DisputeInsert] MySQL insert fallback:', disErr.message);
+    }
+
+    // Sync in-memory representation
+    loadDb();
+    const newDisId = ++idTrackers.disputes;
+    dbData.disputes = dbData.disputes || [];
+    dbData.disputes.push({
+      id: newDisId,
+      order_id: order.order_id,
+      raiser_id: userId,
+      reason: disputeReason,
+      proof_path: proofPath || '',
+      status: 'Pending',
+      created_at: new Date().toISOString()
+    });
+    const memOrder = (dbData.orders || []).find(o => o.order_id === order.order_id);
+    if (memOrder) memOrder.status = 'Admin Review';
+    const memUser = (dbData.users || []).find(u => u.id == userId);
+    if (memUser) memUser.bcoin_balance = Math.max(0, Number(memUser.bcoin_balance || 0) - Number(order.amount || 0));
+    await saveDbAsync();
+
+    return res.json({
+      success: true,
+      message: 'Dispute submitted successfully! Order escalated to Admin Review and registered in Admin Disputes board.'
+    });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -1391,31 +1448,66 @@ app.post('/api/orders/:orderId/p2p-dispute-auto', authMiddleware, async (req, re
   }
 });
 
-// 6. Admin lists disputes
+// 6. Admin lists disputes directly from database
 app.get('/api/admin/disputes', adminAuth, async (req, res) => {
   try {
-    loadDb();
-    const list = dbData.disputes.map(d => {
-      const order = dbData.orders.find(o => o.order_id === d.order_id) || {};
-      const raiser = dbData.users.find(u => u.id == d.raiser_id) || {};
-      const depositor = dbData.users.find(u => u.id == order.user_id) || {};
-      
-      return {
-        id: d.id,
-        order_id: d.order_id,
-        amount: order.amount,
-        utr: order.utr,
-        depositor_screenshot: order.screenshot_path,
-        reason: d.reason,
-        receiver_proof: d.proof_path,
-        status: d.status,
-        created_at: d.created_at,
-        depositor_name: depositor.username || 'Depositor',
-        depositor_uid: depositor.uid || '',
-        receiver_name: raiser.username || 'Receiver',
-        receiver_uid: raiser.uid || ''
-      };
-    });
+    let list = [];
+    try {
+      const rows = await query.all(`
+        SELECT d.*, 
+               o.amount, o.utr, o.screenshot_path as depositor_screenshot, o.status as order_status,
+               u.username as receiver_name, u.uid as receiver_uid, u.mobile as receiver_mobile,
+               du.username as depositor_name, du.uid as depositor_uid, du.mobile as depositor_mobile
+        FROM disputes d
+        LEFT JOIN orders o ON d.order_id = o.order_id
+        LEFT JOIN users u ON d.raiser_id = u.id
+        LEFT JOIN users du ON o.user_id = du.id
+        ORDER BY d.id DESC
+      `);
+      if (Array.isArray(rows) && rows.length > 0) {
+        list = rows.map(d => ({
+          id: d.id,
+          order_id: d.order_id,
+          amount: d.amount,
+          utr: d.utr,
+          depositor_screenshot: d.depositor_screenshot,
+          reason: d.reason,
+          receiver_proof: d.proof_path,
+          status: d.status,
+          created_at: d.created_at,
+          depositor_name: d.depositor_name || 'Depositor',
+          depositor_uid: d.depositor_uid || '',
+          receiver_name: d.receiver_name || 'Receiver',
+          receiver_uid: d.receiver_uid || ''
+        }));
+      }
+    } catch (e) {
+      console.warn('[AdminDisputes] DB query fallback:', e.message);
+    }
+
+    if (list.length === 0) {
+      loadDb();
+      list = (dbData.disputes || []).map(d => {
+        const order = (dbData.orders || []).find(o => o.order_id === d.order_id) || {};
+        const raiser = (dbData.users || []).find(u => u.id == d.raiser_id) || {};
+        const depositor = (dbData.users || []).find(u => u.id == order.user_id) || {};
+        return {
+          id: d.id,
+          order_id: d.order_id,
+          amount: order.amount,
+          utr: order.utr,
+          depositor_screenshot: order.screenshot_path,
+          reason: d.reason,
+          receiver_proof: d.proof_path,
+          status: d.status,
+          created_at: d.created_at,
+          depositor_name: depositor.username || 'Depositor',
+          depositor_uid: depositor.uid || '',
+          receiver_name: raiser.username || 'Receiver',
+          receiver_uid: raiser.uid || ''
+        };
+      });
+    }
 
     return res.json({ success: true, disputes: list });
   } catch (err) {
