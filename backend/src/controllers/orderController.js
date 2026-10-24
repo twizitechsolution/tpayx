@@ -237,20 +237,32 @@ exports.getPaymentQuote = async (req, res) => {
           });
       }
 
-      // 2. Filter out users who already have an active unfinalized sales order in MySQL
+      // 2. Strict Filter: A user with an active, unfinalized order (Pending, Confirming, Admin Review, Disputed) CANNOT receive another order!
       let busyUserIds = new Set();
       try {
         const busyOrders = await query.all(`
-          SELECT receiver_id, seller_id FROM orders 
+          SELECT seller_id, receiver_id FROM orders 
           WHERE status IN ('Pending', 'Confirming', 'Admin Review', 'Disputed')
         `);
         if (Array.isArray(busyOrders)) {
           busyOrders.forEach(o => {
-            if (o.receiver_id) busyUserIds.add(Number(o.receiver_id));
             if (o.seller_id) busyUserIds.add(Number(o.seller_id));
+            if (o.receiver_id) busyUserIds.add(Number(o.receiver_id));
           });
         }
-      } catch (e) {}
+      } catch (e) {
+        try {
+          const fallbackBusy = await query.all(`
+            SELECT seller_id FROM orders 
+            WHERE status IN ('Pending', 'Confirming', 'Admin Review', 'Disputed')
+          `);
+          if (Array.isArray(fallbackBusy)) {
+            fallbackBusy.forEach(o => {
+              if (o.seller_id) busyUserIds.add(Number(o.seller_id));
+            });
+          }
+        } catch (err2) {}
+      }
 
       const nowTime = Date.now();
       const eligibleUsers = candidateUsers.filter(u => {

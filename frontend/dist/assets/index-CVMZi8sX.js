@@ -72,9 +72,10 @@ Please change the parent <Route path="${e}"> to <Route path="${e===`/`?`*`:`${e}
     [loading, setLoading] = (0, v.useState)(!1),
     [refreshing, setRefreshing] = (0, v.useState)(!1),
     [actionLoading, setActionLoading] = (0, v.useState)(null),
+    [previewImg, setPreviewImg] = (0, v.useState)(null),
     fetchP2PRequests = async (isManual = !1) => {
       try {
-        if (isManual) { setRefreshing(!0); r('Refreshing sell requests...'); }
+        if (isManual) { setRefreshing(!0); r('Checking for new orders...'); }
         let res = await W.get(n + '/user/p2p-requests');
         let data = res && res.data ? res.data : res;
         if (data && data.success) {
@@ -86,257 +87,357 @@ Please change the parent <Route path="${e}"> to <Route path="${e===`/`?`*`:`${e}
             if (data.stats) localStorage.setItem('tpayx_cached_sell_stats', JSON.stringify(data.stats));
             if (data.history) localStorage.setItem('tpayx_cached_sell_history', JSON.stringify(data.history));
           } catch {}
-          if (isManual) r('Refreshed! Found ' + (data.requests ? data.requests.length : 0) + ' pending order(s).');
+          if (isManual) r('Updated! ' + (data.requests?.length ? 'You have a pending order!' : 'No new orders right now.'));
         }
       } catch (err) {
         console.error('Fetch P2P requests error:', err);
-        if (isManual) r('Failed to refresh sell requests.');
+        if (isManual) r('Could not sync orders.');
       } finally {
         setLoading(!1);
-        if (isManual) setTimeout(() => setRefreshing(!1), 500);
+        if (isManual) setTimeout(() => setRefreshing(!1), 400);
       }
     };
+
   (0, v.useEffect)(() => {
     fetchP2PRequests(!1);
-    let e = setInterval(() => fetchP2PRequests(!1), 5000);
-    return () => clearInterval(e);
+    let interval = setInterval(() => fetchP2PRequests(!1), 4000);
+    return () => clearInterval(interval);
   }, [n]);
+
   let handleApprove = async (orderId) => {
-      if (!confirm('Are you sure you want to approve this sell request and release USDT to buyer?')) return;
-      setActionLoading(orderId);
-      try {
-        let res = await W.post(n + '/orders/' + orderId + '/p2p-receive');
-        let data = res && res.data ? res.data : res;
-        data && data.success ? (r('Order approved! USDT released successfully.'), fetchP2PRequests(!1)) : r(data?.message || 'Failed to approve order.');
-      } catch (err) {
-        r(err.response?.data?.message || err.response?.data?.error || 'Error processing approval.');
-      } finally {
-        setActionLoading(null);
+    if (!confirm('Are you sure you have received payment in your bank/UPI? Approving will release TCoin to the buyer.')) return;
+    setActionLoading(orderId);
+    try {
+      let res = await W.post(n + '/orders/' + orderId + '/p2p-receive');
+      let data = res && res.data ? res.data : res;
+      if (data && data.success) {
+        r('Payment confirmed! TCoin released successfully.');
+        fetchP2PRequests(!1);
+      } else {
+        r(data?.message || 'Failed to approve order.');
       }
-    },
-    handleReject = async (orderId) => {
-      if (!confirm('Are you sure you want to reject this sell request?')) return;
-      setActionLoading(orderId);
-      try {
-        let res = await W.post(n + '/orders/' + orderId + '/p2p-reject');
-        let data = res && res.data ? res.data : res;
-        data && data.success ? (r('Sell request rejected.'), fetchP2PRequests(!1)) : r(data?.message || 'Failed to reject order.');
-      } catch (err) {
-        r(err.response?.data?.message || err.response?.data?.error || 'Error rejecting order.');
-      } finally {
-        setActionLoading(null);
+    } catch (err) {
+      r(err.response?.data?.message || err.response?.data?.error || 'Error processing approval.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  let handleDispute = async (orderId) => {
+    let reason = prompt('Please describe why you are disputing this order (e.g. Payment not received in bank):');
+    if (!reason || !reason.trim()) return;
+    setActionLoading(orderId);
+    try {
+      let res = await W.post(n + '/orders/' + orderId + '/p2p-reject', { reason: reason.trim() });
+      let data = res && res.data ? res.data : res;
+      if (data && data.success) {
+        r('Order disputed! Escalated to Admin Review. Your balance is safe on hold.');
+        fetchP2PRequests(!1);
+      } else {
+        r(data?.message || 'Failed to dispute order.');
       }
-    },
-    copyUTR = (u) => {
-      navigator.clipboard.writeText(u);
-      r('UTR copied to clipboard!');
-    };
+    } catch (err) {
+      r(err.response?.data?.message || err.response?.data?.error || 'Error disputing order.');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  let copyUTR = (u) => {
+    navigator.clipboard.writeText(u);
+    r('UTR reference copied!');
+  };
+
   return (0, G.jsxs)('div', {
-    className: 'scroll-area min-h-screen bg-[#f5f7fa] pb-24',
+    className: 'scroll-area min-h-screen pb-28 text-left select-none',
+    style: { background: 'linear-gradient(180deg, #eef5fc 0%, #f4f8fc 100%)' },
     children: [
+      // 1. Sleek Modern Header matching Screenshot 2 (Buy Page)
       (0, G.jsxs)('div', {
-        className: 'gradient-brand text-white p-5 rounded-b-3xl shadow-lg relative mb-4',
+        className: 'px-5 pt-11 pb-4 flex items-center justify-between',
         children: [
           (0, G.jsxs)('div', {
-            className: 'flex justify-between items-center mb-4',
+            className: 'flex items-center gap-3',
             children: [
-              (0, G.jsxs)('div', {
-                children: [
-                  (0, G.jsx)('h1', { className: 'text-xl font-black tracking-tight', children: 'P2P Sell Desk' }),
-                  (0, G.jsx)('p', { className: 'text-xs text-slate-300 mt-0.5 font-medium', children: 'Instant Buyer Orders & Settlement' })
-                ]
+              (0, G.jsx)('span', {
+                className: 'text-2xl font-black text-blue-600 tracking-tight',
+                children: 'SELL'
               }),
-              (0, G.jsxs)('div', {
-                className:
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ' +
-                  (requests.length > 0 ? 'bg-amber-400 text-slate-950 animate-pulse shadow-md' : 'bg-white/10 text-slate-200 border border-white/10'),
-                children: [
-                  (0, G.jsx)('i', { className: 'fas fa-bell text-[11px]' }),
-                  (0, G.jsx)('span', { children: requests.length + ' ' + (requests.length === 1 ? 'PENDING' : 'PENDING REQUESTS') })
-                ]
+              (0, G.jsxs)('span', {
+                className: 'text-xs text-slate-400 font-bold tracking-wide uppercase',
+                children: ['P2P Settlement']
               })
-            ]
-          }),
-          (0, G.jsxs)('div', {
-            className: 'grid grid-cols-2 gap-3 mt-2',
-            children: [
-              (0, G.jsxs)('div', {
-                className: 'bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3',
-                children: [
-                  (0, G.jsx)('div', { className: 'text-[10px] text-slate-300 font-semibold uppercase tracking-wider', children: 'Total Orders Sold' }),
-                  (0, G.jsx)('div', { className: 'text-lg font-black text-white mt-0.5', children: stats.total_sales_count || 0 })
-                ]
-              }),
-              (0, G.jsxs)('div', {
-                className: 'bg-white/10 backdrop-blur-md border border-white/10 rounded-2xl p-3',
-                children: [
-                  (0, G.jsx)('div', { className: 'text-[10px] text-slate-300 font-semibold uppercase tracking-wider', children: 'Total Volume' }),
-                  (0, G.jsxs)('div', { className: 'text-lg font-black text-white mt-0.5', children: ['₹', (stats.total_sales_amount || 0).toLocaleString('en-IN')] })
-                ]
-              })
-            ]
-          })
-        ]
-      }),
-      (0, G.jsxs)('div', {
-        className: 'flex gap-2.5 mx-4 mt-1 mb-2 select-none',
-        children: [
-          (0, G.jsxs)('button', {
-            type: 'button',
-            onClick: () => navigate('/withdraw'),
-            className: 'flex-1 bg-white border border-blue-200 hover:bg-blue-50/50 text-blue-600 font-black py-3 px-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-xs active:scale-95 transition-all uppercase tracking-wider',
-            children: [
-              (0, G.jsx)('i', { className: 'fas fa-plus-circle text-blue-500 text-sm' }),
-              'Request Withdrawal (Sell TCoin)'
             ]
           }),
           (0, G.jsxs)('button', {
             type: 'button',
             onClick: () => navigate('/history?tab=sell'),
-            className: 'bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-black py-3 px-4 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-xs active:scale-95 transition-all uppercase tracking-wider',
+            className: 'bg-white hover:bg-slate-50 text-slate-700 font-black text-xs px-4 py-2 rounded-full border border-slate-200/90 shadow-xs flex items-center gap-1.5 active:scale-95 transition-all',
             children: [
-              (0, G.jsx)('i', { className: 'fas fa-history text-slate-500' }),
-              'History'
+              (0, G.jsx)('i', { className: 'fas fa-history text-slate-500 text-[11px]' }),
+              'Sell History'
             ]
           })
         ]
       }),
+
+      // 2. Main Content Container
       (0, G.jsxs)('div', {
         className: 'px-4 space-y-4',
         children: [
+          // 3D Stats Card (Floating Neumorphic Design matching Screenshot 2)
           (0, G.jsxs)('div', {
-            className: 'flex justify-between items-center',
+            className: 'bg-white rounded-3xl p-5 shadow-[0_10px_30px_-8px_rgba(37,99,235,0.08)] border border-slate-100/90 relative overflow-hidden',
             children: [
               (0, G.jsxs)('div', {
-                className: 'flex items-center gap-2',
+                className: 'flex justify-between items-start mb-3',
                 children: [
-                  (0, G.jsx)('div', { className: 'w-2 h-2 rounded-full ' + (requests.length > 0 ? 'bg-amber-500 animate-ping' : 'bg-slate-400') }),
-                  (0, G.jsx)('h2', { className: 'text-sm font-extrabold text-slate-800 uppercase tracking-wider', children: 'Live Sell Requests' })
+                  (0, G.jsxs)('div', {
+                    children: [
+                      (0, G.jsx)('span', {
+                        className: 'text-[9.5px] font-black uppercase tracking-wider text-slate-400 block',
+                        children: 'Available TCoin Balance'
+                      }),
+                      (0, G.jsxs)('div', {
+                        className: 'flex items-baseline gap-1 mt-0.5',
+                        children: [
+                          (0, G.jsx)('span', { className: 'text-2xl font-black text-slate-900 tracking-tight', children: '₹' }),
+                          (0, G.jsx)('span', {
+                            className: 'text-2xl font-black text-slate-900 tracking-tight',
+                            children: typeof t?.bcoin_balance === 'number'
+                              ? t.bcoin_balance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                              : '0.00'
+                          })
+                        ]
+                      })
+                    ]
+                  }),
+                  (0, G.jsxs)('div', {
+                    className: 'flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/70 text-emerald-700 px-2.5 py-1 rounded-full text-[10px] font-black shadow-xs',
+                    children: [
+                      (0, G.jsx)('span', { className: 'w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-ping' }),
+                      'P2P Active'
+                    ]
+                  })
                 ]
               }),
-              (0, G.jsxs)('button', {
-                onClick: () => fetchP2PRequests(!0),
-                disabled: refreshing,
-                className: 'text-xs text-blue-600 font-bold flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 active:scale-95 transition-all',
+              (0, G.jsxs)('div', {
+                className: 'grid grid-cols-2 gap-3 pt-3 border-t border-slate-100/80',
                 children: [
-                  (0, G.jsx)('i', { className: 'fas fa-sync-alt ' + (refreshing ? 'animate-spin text-blue-700' : '') }),
-                  refreshing ? ' Loading...' : ' Refresh'
+                  (0, G.jsxs)('div', {
+                    className: 'bg-slate-50/70 rounded-2xl p-2.5 border border-slate-100',
+                    children: [
+                      (0, G.jsx)('span', { className: 'text-[9px] font-bold text-slate-400 uppercase tracking-wider block', children: 'Total Orders Sold' }),
+                      (0, G.jsxs)('span', { className: 'text-base font-black text-slate-800 mt-0.5 block', children: [stats.total_sales_count || 0, ' Orders'] })
+                    ]
+                  }),
+                  (0, G.jsxs)('div', {
+                    className: 'bg-slate-50/70 rounded-2xl p-2.5 border border-slate-100',
+                    children: [
+                      (0, G.jsx)('span', { className: 'text-[9px] font-bold text-slate-400 uppercase tracking-wider block', children: 'Total Settled' }),
+                      (0, G.jsxs)('span', { className: 'text-base font-black text-blue-600 mt-0.5 block', children: ['₹', (stats.total_sales_amount || 0).toLocaleString('en-IN')] })
+                    ]
+                  })
                 ]
               })
             ]
           }),
-          loading && requests.length === 0
-            ? (0, G.jsx)('div', {
-                className: 'bg-white rounded-2xl p-8 text-center shadow-sm border border-slate-100',
-                children: (0, G.jsx)('i', { className: 'fas fa-circle-notch fa-spin text-2xl text-blue-600' })
-              })
-            : requests.length === 0
-            ? (0, G.jsxs)('div', {
-                className: 'bg-white rounded-2xl p-6 text-center shadow-sm border border-slate-100 flex flex-col items-center justify-center',
+
+          // Section Title: Live Order Section
+          (0, G.jsxs)('div', {
+            className: 'flex justify-between items-center px-1 pt-1',
+            children: [
+              (0, G.jsxs)('div', {
+                className: 'flex items-center gap-2',
                 children: [
                   (0, G.jsx)('div', {
-                    className: 'w-14 h-14 rounded-full bg-slate-50 flex items-center justify-center mb-3 text-slate-300',
-                    children: (0, G.jsx)('i', { className: 'fas fa-coins text-2xl' })
+                    className: 'w-2 h-2 rounded-full ' + (requests.length > 0 ? 'bg-amber-500 animate-ping' : 'bg-blue-500')
                   }),
-                  (0, G.jsx)('h3', { className: 'text-sm font-bold text-slate-700', children: 'No Pending Sell Requests' }),
+                  (0, G.jsx)('h2', {
+                    className: 'text-xs font-black text-slate-800 uppercase tracking-wider',
+                    children: 'Incoming P2P Sale Request'
+                  })
+                ]
+              }),
+              (0, G.jsxs)('button', {
+                type: 'button',
+                onClick: () => fetchP2PRequests(!0),
+                disabled: refreshing,
+                className: 'text-[11px] text-blue-600 font-bold flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50/80 active:scale-95 transition-all',
+                children: [
+                  (0, G.jsx)('i', { className: 'fas fa-sync-alt text-[10px] ' + (refreshing ? 'animate-spin' : '') }),
+                  refreshing ? 'Checking...' : 'Refresh'
+                ]
+              })
+            ]
+          }),
+
+          // Live Request State or Empty Idle State
+          requests.length === 0
+            ? (0, G.jsxs)('div', {
+                className: 'bg-white rounded-3xl p-6 text-center shadow-[0_4px_20px_rgba(0,0,0,0.04)] border border-slate-100/90 flex flex-col items-center justify-center space-y-3',
+                children: [
+                  (0, G.jsx)('div', {
+                    className: 'w-14 h-14 rounded-full bg-blue-50/80 border border-blue-100 flex items-center justify-center text-blue-600 shadow-inner',
+                    children: (0, G.jsx)('i', { className: 'fas fa-satellite-dish text-2xl animate-pulse' })
+                  }),
+                  (0, G.jsx)('h3', { className: 'text-sm font-black text-slate-800', children: 'System Active In P2P Queue' }),
                   (0, G.jsx)('p', {
-                    className: 'text-xs text-slate-400 mt-1 max-w-[240px]',
-                    children: 'When buyers initiate a P2P order for your sales, notifications and approval timers will show up here instantly.'
+                    className: 'text-xs text-slate-500 max-w-[260px] leading-relaxed',
+                    children: 'Your account is automatically rotated for incoming buyer deposits. As soon as a buyer is matched, their payment details and confirmation buttons will appear right here.'
+                  }),
+                  (0, G.jsxs)('div', {
+                    className: 'text-[9.5px] font-bold text-slate-400 bg-slate-50 border border-slate-200/60 rounded-full px-3 py-1 flex items-center gap-1.5',
+                    children: [
+                      (0, G.jsx)('span', { className: 'w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block' }),
+                      'Live Auto-Sync Active (Every 4s)'
+                    ]
                   })
                 ]
               })
             : (0, G.jsx)('div', {
                 className: 'space-y-3',
-                children: requests.map((e) =>
+                children: requests.map((item) =>
                   (0, G.jsxs)('div', {
-                    key: e.order_id || e.id,
-                    className: 'bg-white rounded-2xl p-4 shadow-sm border border-amber-200/80 relative overflow-hidden transition-all hover:shadow-md',
+                    key: item.order_id || item.id,
+                    className: 'bg-white rounded-3xl p-5 shadow-[0_12px_32px_-6px_rgba(0,0,0,0.08)] border border-amber-200 relative overflow-hidden transition-all',
                     children: [
-                      (0, G.jsx)('div', { className: 'absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-amber-400 to-orange-500' }),
+                      // Top Accent Bar
+                      (0, G.jsx)('div', { className: 'absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-amber-500' }),
+                      
+                      // Top Row: Big Amount & Countdown Timer (Styled like Buy Page)
                       (0, G.jsxs)('div', {
-                        className: 'flex justify-between items-start mb-3',
+                        className: 'flex justify-between items-center mb-3.5',
                         children: [
                           (0, G.jsxs)('div', {
+                            className: 'flex items-baseline gap-2',
+                            children: [
+                              (0, G.jsxs)('span', {
+                                className: 'text-2xl font-black text-slate-900 tracking-tight',
+                                children: ['₹', Number(item.amount).toLocaleString('en-IN')]
+                              }),
+                              (0, G.jsx)('span', {
+                                className: 'bg-blue-50 text-blue-600 border border-blue-200/60 font-bold text-[10px] px-2 py-0.5 rounded-lg',
+                                children: 'P2P Sale'
+                              })
+                            ]
+                          }),
+                          (0, G.jsx)(LiveTimer, { createdAt: item.created_at })
+                        ]
+                      }),
+
+                      // Buyer & Payment Verification Card
+                      (0, G.jsxs)('div', {
+                        className: 'bg-slate-50/80 rounded-2xl p-3 border border-slate-100 space-y-2 mb-3.5 text-xs',
+                        children: [
+                          (0, G.jsxs)('div', {
+                            className: 'flex justify-between items-center pb-2 border-b border-slate-200/60',
                             children: [
                               (0, G.jsxs)('div', {
                                 className: 'flex items-center gap-2',
                                 children: [
-                                  (0, G.jsx)('span', { className: 'text-xs font-bold text-slate-900', children: e.buyer_username || e.user_name || 'Buyer' }),
-                                  (0, G.jsx)('span', {
-                                    className: 'text-[10px] bg-slate-100 text-slate-600 font-mono px-1.5 py-0.5 rounded font-medium',
-                                    children: 'UID: ' + (e.buyer_uid || e.user_id || '---')
+                                  (0, G.jsx)('div', {
+                                    className: 'w-7 h-7 rounded-full bg-blue-600 text-white font-black text-[10px] flex items-center justify-center uppercase shadow-xs',
+                                    children: (item.buyer_username || 'B')[0]
+                                  }),
+                                  (0, G.jsxs)('div', {
+                                    children: [
+                                      (0, G.jsx)('span', { className: 'font-black text-slate-800 block text-xs truncate max-w-[140px]', children: item.buyer_username || 'Buyer' }),
+                                      (0, G.jsxs)('span', { className: 'text-[9px] text-slate-400 font-mono block', children: ['UID: ', item.buyer_uid || 'N/A'] })
+                                    ]
                                   })
                                 ]
                               }),
-                              (0, G.jsx)('div', {
-                                className: 'text-[10px] text-slate-400 mt-0.5',
-                                children: e.created_at ? new Date(e.created_at).toLocaleString('en-IN') : 'Just now'
+                              (0, G.jsxs)('span', {
+                                className: 'text-[9.5px] font-bold text-slate-500 font-mono bg-white px-2 py-0.5 rounded-lg border border-slate-200/80',
+                                children: [item.buyer_mobile ? item.buyer_mobile.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2') : 'Verified Buyer']
                               })
                             ]
                           }),
-                          (0, G.jsx)(LiveTimer, { createdAt: e.created_at })
-                        ]
-                      }),
-                      (0, G.jsxs)('div', {
-                        className: 'bg-slate-50 rounded-xl p-3 mb-3 border border-slate-100 flex justify-between items-center',
-                        children: [
+
+                          // UTR Reference with Copy Button
                           (0, G.jsxs)('div', {
+                            className: 'flex justify-between items-center bg-white p-2 rounded-xl border border-slate-200/80',
                             children: [
-                              (0, G.jsx)('div', { className: 'text-[10px] text-slate-400 font-semibold uppercase', children: 'Buyer Sent' }),
-                              (0, G.jsxs)('div', { className: 'text-xl font-black text-slate-900', children: ['₹', Number(e.amount).toLocaleString('en-IN')] })
+                              (0, G.jsxs)('div', {
+                                children: [
+                                  (0, G.jsx)('span', { className: 'text-[8.5px] font-black uppercase text-slate-400 block tracking-wider', children: 'UTR / Transaction Reference' }),
+                                  (0, G.jsx)('span', { className: 'text-xs font-mono font-black text-slate-900 select-all block', children: item.utr || 'Pending Submission' })
+                                ]
+                              }),
+                              item.utr && (0, G.jsx)('button', {
+                                type: 'button',
+                                onClick: () => copyUTR(item.utr),
+                                className: 'bg-blue-50 hover:bg-blue-100 text-blue-600 font-black text-[9px] px-2.5 py-1 rounded-lg uppercase active:scale-95 transition-all',
+                                children: 'Copy'
+                              })
                             ]
                           }),
-                          (0, G.jsxs)('div', {
-                            className: 'text-right',
+
+                          // Screenshot Proof Preview
+                          item.screenshot_path && (0, G.jsxs)('div', {
+                            className: 'flex items-center justify-between bg-white p-2 rounded-xl border border-slate-200/80',
                             children: [
-                              (0, G.jsx)('div', { className: 'text-[10px] text-slate-400 font-semibold uppercase', children: 'USDT to Release' }),
                               (0, G.jsxs)('div', {
-                                className: 'text-sm font-extrabold text-blue-600',
-                                children: [Number(e.total_usdt || e.amount / 110).toFixed(2), ' USDT']
+                                className: 'flex items-center gap-2',
+                                children: [
+                                  (0, G.jsx)('img', {
+                                    src: item.screenshot_path,
+                                    alt: 'Proof',
+                                    className: 'w-8 h-8 rounded-lg object-cover border border-slate-200 cursor-pointer shadow-xs',
+                                    onClick: () => setPreviewImg(item.screenshot_path)
+                                  }),
+                                  (0, G.jsx)('span', { className: 'text-[10px] font-bold text-slate-700', children: 'Payment Screenshot Attached' })
+                                ]
+                              }),
+                              (0, G.jsx)('button', {
+                                type: 'button',
+                                onClick: () => setPreviewImg(item.screenshot_path),
+                                className: 'text-blue-600 font-bold text-[9px] uppercase hover:underline',
+                                children: 'View Full'
                               })
                             ]
                           })
                         ]
                       }),
+
+                      // Warning Banner
                       (0, G.jsxs)('div', {
-                        className: 'flex justify-between items-center bg-blue-50/50 rounded-xl px-3 py-2 mb-3 border border-blue-100/60',
+                        className: 'bg-amber-50/90 border border-amber-200/70 rounded-xl p-2.5 text-center text-[9.5px] text-amber-800 font-bold mb-3.5 flex items-center justify-center gap-1.5',
                         children: [
-                          (0, G.jsxs)('div', {
-                            className: 'flex items-center gap-1.5',
-                            children: [
-                              (0, G.jsx)('span', { className: 'text-xs font-semibold text-slate-500', children: 'UTR:' }),
-                              (0, G.jsx)('span', { className: 'text-xs font-mono font-black text-blue-700 select-all', children: e.utr || 'N/A' })
-                            ]
-                          }),
-                          e.utr
-                            ? (0, G.jsxs)('button', {
-                                onClick: () => copyUTR(e.utr),
-                                className: 'text-[10px] bg-blue-600 text-white font-bold px-2 py-1 rounded-lg flex items-center gap-1 active:scale-95 transition-transform',
-                                children: [(0, G.jsx)('i', { className: 'fas fa-copy' }), ' COPY']
-                              })
-                            : null
+                          (0, G.jsx)('i', { className: 'fas fa-shield-alt text-amber-600 text-xs' }),
+                          (0, G.jsx)('span', { children: 'Please open your Bank/UPI app and verify the money has actually arrived before approving.' })
                         ]
                       }),
+
+                      // Action Buttons: Approve (Vibrant Blue like Buy page) & Dispute
                       (0, G.jsxs)('div', {
-                        className: 'flex gap-2 pt-1',
+                        className: 'grid grid-cols-3 gap-2.5',
                         children: [
                           (0, G.jsxs)('button', {
-                            onClick: () => handleReject(e.order_id || e.id),
-                            disabled: actionLoading === (e.order_id || e.id),
-                            className:
-                              'flex-1 py-2.5 px-3 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform disabled:opacity-50',
-                            children: [(0, G.jsx)('i', { className: 'fas fa-times-circle' }), ' Reject']
+                            type: 'button',
+                            onClick: () => handleDispute(item.order_id || item.id),
+                            disabled: actionLoading === (item.order_id || item.id),
+                            className: 'col-span-1 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-600 font-black py-3 rounded-2xl text-[11px] active:scale-95 transition-all uppercase flex items-center justify-center gap-1 shadow-xs',
+                            children: [
+                              (0, G.jsx)('i', { className: 'fas fa-exclamation-triangle text-[10px]' }),
+                              'Dispute'
+                            ]
                           }),
                           (0, G.jsxs)('button', {
-                            onClick: () => handleApprove(e.order_id || e.id),
-                            disabled: actionLoading === (e.order_id || e.id),
-                            className:
-                              'flex-1 py-2.5 px-3 bg-emerald-600 text-white shadow-md shadow-emerald-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-transform disabled:opacity-50',
+                            type: 'button',
+                            onClick: () => handleApprove(item.order_id || item.id),
+                            disabled: actionLoading === (item.order_id || item.id),
+                            className: 'col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-black py-3 rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-blue-500/25 active:scale-95 transition-all flex items-center justify-center gap-2',
                             children: [
-                              actionLoading === (e.order_id || e.id)
+                              actionLoading === (item.order_id || item.id)
                                 ? (0, G.jsx)('i', { className: 'fas fa-spinner fa-spin' })
-                                : (0, G.jsx)('i', { className: 'fas fa-check-circle' }),
-                              ' Approve & Release'
+                                : (0, G.jsxs)(G.Fragment, {
+                                    children: [
+                                      (0, G.jsx)('i', { className: 'fas fa-check-circle' }),
+                                      (0, G.jsx)('span', { children: 'Approve & Release' })
+                                    ]
+                                  })
                             ]
                           })
                         ]
@@ -345,54 +446,82 @@ Please change the parent <Route path="${e}"> to <Route path="${e===`/`?`*`:`${e}
                   })
                 )
               }),
+
+          // Section Title: Recent Completed P2P Sales
           (0, G.jsx)('div', {
-            className: 'pt-2',
-            children: (0, G.jsx)('h2', { className: 'text-sm font-extrabold text-slate-800 uppercase tracking-wider mb-3', children: 'Sales History' })
+            className: 'px-1 pt-2',
+            children: (0, G.jsx)('h2', {
+              className: 'text-xs font-black text-slate-800 uppercase tracking-wider',
+              children: 'Recent Settlement History'
+            })
           }),
+
           history.length === 0
             ? (0, G.jsx)('div', {
-                className: 'bg-white rounded-2xl p-5 text-center text-xs text-slate-400 border border-slate-100',
-                children: 'No previous sales history recorded.'
+                className: 'bg-white rounded-3xl p-5 text-center shadow-xs border border-slate-100/90 text-xs text-slate-400 font-medium',
+                children: 'No previous sales history recorded yet.'
               })
             : (0, G.jsx)('div', {
-                className: 'space-y-2',
-                children: history.map((e) =>
+                className: 'space-y-2.5',
+                children: history.slice(0, 10).map((hItem) =>
                   (0, G.jsxs)('div', {
-                    key: e.order_id || e.id,
-                    className: 'bg-white rounded-2xl p-3 shadow-sm border border-slate-100 flex justify-between items-center',
+                    key: hItem.order_id || hItem.id,
+                    className: 'bg-white rounded-2xl p-3.5 shadow-[0_4px_16px_rgba(0,0,0,0.03)] border border-slate-100/90 flex justify-between items-center',
                     children: [
                       (0, G.jsxs)('div', {
+                        className: 'space-y-0.5',
                         children: [
                           (0, G.jsxs)('div', {
                             className: 'flex items-center gap-2',
                             children: [
-                              (0, G.jsxs)('span', { className: 'text-xs font-bold text-slate-800', children: ['₹', Number(e.amount).toLocaleString('en-IN')] }),
+                              (0, G.jsxs)('span', {
+                                className: 'text-sm font-black text-slate-900',
+                                children: ['₹', Number(hItem.amount).toLocaleString('en-IN')]
+                              }),
                               (0, G.jsx)('span', {
                                 className:
-                                  'text-[9px] font-bold px-1.5 py-0.5 rounded ' +
-                                  (e.status === 'Completed' || e.status === 'completed' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'),
-                                children: (e.status || 'DONE').toUpperCase()
+                                  'text-[9px] font-black px-2 py-0.5 rounded-full ' +
+                                  (hItem.status === 'Completed' || hItem.status === 'completed'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200/60'),
+                                children: hItem.status || 'Completed'
                               })
                             ]
                           }),
-                          (0, G.jsx)('div', {
-                            className: 'text-[10px] text-slate-400 mt-0.5',
-                            children: e.created_at ? new Date(e.created_at).toLocaleString('en-IN') : '---'
+                          (0, G.jsx)('span', {
+                            className: 'text-[9.5px] font-mono text-slate-400 block',
+                            children: hItem.order_id
                           })
                         ]
                       }),
-                      (0, G.jsxs)('div', {
-                        className: 'text-right',
-                        children: [
-                          (0, G.jsxs)('div', { className: 'text-xs font-bold text-slate-700', children: [Number(e.total_usdt || e.amount / 110).toFixed(2), ' USDT'] }),
-                          (0, G.jsx)('div', { className: 'text-[10px] text-slate-400', children: e.buyer_username || e.user_name || 'Buyer' })
-                        ]
+                      (0, G.jsx)('span', {
+                        className: 'text-[10px] font-bold text-slate-400',
+                        children: hItem.created_at ? new Date(hItem.created_at).toLocaleDateString('en-IN') : 'Completed'
                       })
                     ]
                   })
                 )
               })
         ]
+      }),
+
+      // Screenshot Full-Screen Modal Preview
+      previewImg && (0, G.jsx)('div', {
+        className: 'modal-overlay show z-50 flex items-center justify-center p-4 bg-black/80',
+        onClick: () => setPreviewImg(null),
+        children: (0, G.jsxs)('div', {
+          className: 'bg-white rounded-3xl p-3 max-w-sm w-full relative shadow-2xl',
+          onClick: (e) => e.stopPropagation(),
+          children: [
+            (0, G.jsx)('img', { src: previewImg, alt: 'Proof Full', className: 'w-full max-h-[70vh] object-contain rounded-2xl' }),
+            (0, G.jsx)('button', {
+              type: 'button',
+              onClick: () => setPreviewImg(null),
+              className: 'w-full mt-3 bg-slate-900 text-white font-black py-2.5 rounded-xl text-xs uppercase',
+              children: 'Close'
+            })
+          ]
+        })
       })
     ]
   });
