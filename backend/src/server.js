@@ -560,12 +560,14 @@ app.get('/api/admin/orders', adminAuth, async (req, res) => {
         receiver_account = bankAcc ? bankAcc.account_number : 'N/A';
         receiver_upi = bankAcc ? bankAcc.upi_id : (receiverUser ? `${receiverUser.mobile}@upi` : 'N/A');
       } else {
-        receiver_mobile = '8763527330';
-        receiver_uid = 'M118248';
-        receiver_name = 'Tushar Admin';
-        receiver_bank = 'HDFC Bank';
-        receiver_account = '50100481729381';
-        receiver_upi = '8763527330@upi';
+        const settings = dbData.settings || {};
+        const fallbackUpi = settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : 'tpayx@upi';
+        receiver_mobile = 'Official Desk';
+        receiver_uid = 'ADMIN';
+        receiver_name = settings.admin_receiver_name || 'TpayX Official Desk';
+        receiver_bank = settings.admin_bank_name || 'State Bank of India';
+        receiver_account = settings.admin_account_number || '389201948572';
+        receiver_upi = fallbackUpi;
       }
 
       const createdAtMs = order.created_at ? new Date(order.created_at).getTime() : Date.now();
@@ -1135,11 +1137,27 @@ app.post('/api/user/register-fcm', authMiddleware, async (req, res) => {
 // 3. Receiver fetches matched requests to confirm
 app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const requestsRows = await query.all(
-      'SELECT o.*, u.username as buyer_username, u.uid as buyer_uid, u.mobile as buyer_mobile FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE (o.seller_id = ? OR o.receiver_id = ?) AND o.status IN ("Confirming", "Pending") ORDER BY o.id DESC',
-      [userId, userId]
-    ) || [];
+    const userId = Number(req.user.id);
+    let requestsRows = [];
+    try {
+      requestsRows = await query.all(
+        `SELECT o.*, u.username as buyer_username, u.uid as buyer_uid, u.mobile as buyer_mobile 
+         FROM orders o 
+         LEFT JOIN users u ON o.user_id = u.id 
+         WHERE (o.seller_id = ? OR o.receiver_id = ?) AND o.user_id != ? AND o.status IN ("Confirming", "Pending") 
+         ORDER BY o.id DESC`,
+        [userId, userId, userId]
+      ) || [];
+    } catch (colErr) {
+      requestsRows = await query.all(
+        `SELECT o.*, u.username as buyer_username, u.uid as buyer_uid, u.mobile as buyer_mobile 
+         FROM orders o 
+         LEFT JOIN users u ON o.user_id = u.id 
+         WHERE o.seller_id = ? AND o.user_id != ? AND o.status IN ("Confirming", "Pending") 
+         ORDER BY o.id DESC`,
+        [userId, userId]
+      ) || [];
+    }
 
     const now = Date.now();
     const enrichedRequests = [];
@@ -1160,15 +1178,27 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
       });
     }
 
-    const completedSalesRes = await query.get(
-      'SELECT COUNT(*) as count, SUM(amount) as total FROM orders WHERE (seller_id = ? OR receiver_id = ?) AND status = "Completed"',
-      [userId, userId]
-    );
-
-    const historyRows = await query.all(
-      'SELECT id, order_id, amount, utr, status, created_at FROM orders WHERE (seller_id = ? OR receiver_id = ?) ORDER BY id DESC LIMIT 20',
-      [userId, userId]
-    ) || [];
+    let completedSalesRes = null;
+    let historyRows = [];
+    try {
+      completedSalesRes = await query.get(
+        'SELECT COUNT(*) as count, SUM(amount) as total FROM orders WHERE (seller_id = ? OR receiver_id = ?) AND status = "Completed"',
+        [userId, userId]
+      );
+      historyRows = await query.all(
+        'SELECT id, order_id, amount, utr, status, created_at FROM orders WHERE (seller_id = ? OR receiver_id = ?) ORDER BY id DESC LIMIT 20',
+        [userId, userId]
+      ) || [];
+    } catch (e) {
+      completedSalesRes = await query.get(
+        'SELECT COUNT(*) as count, SUM(amount) as total FROM orders WHERE seller_id = ? AND status = "Completed"',
+        [userId]
+      );
+      historyRows = await query.all(
+        'SELECT id, order_id, amount, utr, status, created_at FROM orders WHERE seller_id = ? ORDER BY id DESC LIMIT 20',
+        [userId]
+      ) || [];
+    }
 
     return res.json({
       success: true,
@@ -1191,9 +1221,15 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
 app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => {
   try {
     const { orderId } = req.params;
-    const userId = req.user.id;
+    const userId = Number(req.user.id);
 
-    const order = await query.get('SELECT * FROM orders WHERE (order_id = ? OR id = ?) AND (seller_id = ? OR receiver_id = ?)', [orderId, orderId, userId, userId]);
+    let order = null;
+    try {
+      order = await query.get('SELECT * FROM orders WHERE (order_id = ? OR id = ?) AND (seller_id = ? OR receiver_id = ?)', [orderId, orderId, userId, userId]);
+    } catch (e) {
+      order = await query.get('SELECT * FROM orders WHERE (order_id = ? OR id = ?) AND seller_id = ?', [orderId, orderId, userId]);
+    }
+
     if (!order) {
       return res.status(404).json({ error: 'Matched order not found' });
     }
@@ -1213,9 +1249,15 @@ app.post('/api/orders/:orderId/p2p-reject', authMiddleware, async (req, res) => 
 app.post('/api/orders/:orderId/p2p-receive', authMiddleware, async (req, res) => {
   try {
     const { orderId } = req.params;
-    const userId = req.user.id;
+    const userId = Number(req.user.id);
 
-    const order = await query.get('SELECT * FROM orders WHERE (order_id = ? OR id = ?) AND (seller_id = ? OR receiver_id = ?)', [orderId, orderId, userId, userId]);
+    let order = null;
+    try {
+      order = await query.get('SELECT * FROM orders WHERE (order_id = ? OR id = ?) AND (seller_id = ? OR receiver_id = ?)', [orderId, orderId, userId, userId]);
+    } catch (e) {
+      order = await query.get('SELECT * FROM orders WHERE (order_id = ? OR id = ?) AND seller_id = ?', [orderId, orderId, userId]);
+    }
+
     if (!order) {
       return res.status(404).json({ error: 'Matched order not found' });
     }

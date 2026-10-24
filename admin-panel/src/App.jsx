@@ -143,7 +143,7 @@ const ProtectedLayout = ({ children, token, handleLogout, theme, setTheme }) => 
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [adminName, setAdminName] = useState(localStorage.getItem('adminName') || 'Tushar Admin');
+  const [adminName, setAdminName] = useState(localStorage.getItem('adminName') || 'System Admin');
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(adminName);
 
@@ -476,7 +476,7 @@ const ProtectedLayout = ({ children, token, handleLogout, theme, setTheme }) => 
                       >
                         <div className="truncate">
                           <span className="font-bold block group-hover:text-violet-500 transition-colors truncate">{adminName}</span>
-                          <span className="text-[10px] text-slate-500 block truncate">tushar@TpayX.com</span>
+                          <span className="text-[10px] text-slate-500 block truncate">admin@tpayx.online</span>
                         </div>
                         <i className="fas fa-pen text-slate-500 text-[10px] opacity-0 group-hover:opacity-100 transition-all ml-2 shrink-0" />
                       </div>
@@ -1558,7 +1558,7 @@ const Dashboard = ({ token, handleLogout, activeTab, theme }) => {
                         </td>
                         <td className="px-6 py-4">
                           <div className="space-y-0.5 text-[11px]">
-                            <span className="font-bold text-emerald-400 block">{order.receiver_name || 'Tushar Admin'}</span>
+                            <span className="font-bold text-emerald-400 block">{order.receiver_name || 'Official Desk'}</span>
                             <span className="text-slate-400 font-mono block text-[10px]">Mob: {order.receiver_mobile || '8763527330'}</span>
                             <span className="text-slate-500 text-[10px] block leading-tight">
                               {bankName} (A/C: {accNumber})

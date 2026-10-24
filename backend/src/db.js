@@ -60,6 +60,16 @@ let currentSyncPromise = null;
 async function syncDbFromMysql() {
   if (!mysqlPool) return;
   try {
+    // 0. Ensure schema compatibility for orders columns
+    try {
+      await mysqlPool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS receiver_id INT DEFAULT NULL");
+      await mysqlPool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS seller_id INT DEFAULT NULL");
+      await mysqlPool.query("UPDATE orders SET receiver_id = seller_id WHERE receiver_id IS NULL AND seller_id IS NOT NULL");
+      await mysqlPool.query("UPDATE orders SET seller_id = receiver_id WHERE seller_id IS NULL AND receiver_id IS NOT NULL");
+    } catch (migErr) {
+      // Non-fatal if DB user lacks alter permission or MariaDB syntax difference
+    }
+
     const [userRows] = await mysqlPool.query('SELECT * FROM users');
     if (Array.isArray(userRows)) dbData.users = userRows;
 
@@ -77,6 +87,16 @@ async function syncDbFromMysql() {
 
     const [slabRows] = await mysqlPool.query('SELECT * FROM commission_slabs');
     if (Array.isArray(slabRows)) dbData.commission_slabs = slabRows;
+
+    try {
+      const [wRows] = await mysqlPool.query('SELECT * FROM withdrawals');
+      if (Array.isArray(wRows)) dbData.withdrawals = wRows;
+    } catch (e) {}
+
+    try {
+      const [dRows] = await mysqlPool.query('SELECT * FROM disputes');
+      if (Array.isArray(dRows)) dbData.disputes = dRows;
+    } catch (e) {}
 
     const [settingsRows] = await mysqlPool.query('SELECT `key`, `value` FROM settings');
     if (Array.isArray(settingsRows)) {

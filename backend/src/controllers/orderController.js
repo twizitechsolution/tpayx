@@ -313,33 +313,34 @@ exports.getPaymentQuote = async (req, res) => {
           mobile: matchedUser.mobile
         };
       } else {
-        // Fallback to Admin (ID 1) with bank & UPI rotation
+        // Fallback to Platform / Admin dynamically configured in Admin Panel Settings
         receiverId = 1;
         timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         
-        const adminBanks = dbData.bank_accounts.filter(b => b.user_id == 1 && b.status === 'Active');
+        const settings = dbData.settings || {};
+        const upiList = settings.upi_ids ? settings.upi_ids.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const fallbackUpi = upiList.length > 0 ? upiList[Math.floor(Math.random() * upiList.length)] : (settings.upi_id || 'tpayx@upi');
+
+        const adminBanks = (dbData.bank_accounts || []).filter(b => (b.user_id == 1 && b.status === 'Active'));
         const bank = adminBanks.length > 0
           ? adminBanks[Math.floor(Math.random() * adminBanks.length)]
           : {
-              bank_name: 'HDFC Bank',
-              account_holder: 'Tushar Admin',
-              account_number: '50100481729381',
-              ifsc_code: 'HDFCO000123',
-              upi_id: '8763527330@upi'
+              bank_name: settings.admin_bank_name || 'State Bank of India',
+              account_holder: settings.admin_receiver_name || 'TpayX Official Desk',
+              account_number: settings.admin_account_number || '389201948572',
+              ifsc_code: settings.admin_ifsc_code || 'SBIN0001234',
+              upi_id: fallbackUpi
             };
 
-        const receiverUser = dbData.users.find(u => u.id == 1) || { mobile: '8763527330' };
-        const settings = dbData.settings || {};
-        const upiList = settings.upi_ids ? settings.upi_ids.split(',').map(s => s.trim()).filter(Boolean) : [];
-        const fallbackUpi = upiList.length > 0 ? upiList[Math.floor(Math.random() * upiList.length)] : '8763527330@upi';
+        const receiverUser = (dbData.users || []).find(u => u.role === 'admin' || u.id == 1) || { mobile: 'Official Desk' };
 
         receiverDetails = {
-          receiver_name: bank.account_holder,
-          bank_name: bank.bank_name,
-          account_number: bank.account_number,
-          ifsc_code: bank.ifsc_code,
+          receiver_name: bank.account_holder || settings.admin_receiver_name || 'TpayX Official Desk',
+          bank_name: bank.bank_name || settings.admin_bank_name || 'Bank',
+          account_number: bank.account_number || settings.admin_account_number || 'N/A',
+          ifsc_code: bank.ifsc_code || settings.admin_ifsc_code || 'N/A',
           upi_id: bank.upi_id || fallbackUpi,
-          mobile: receiverUser.mobile
+          mobile: receiverUser.mobile || 'Official Desk'
         };
       }
     } else {
@@ -528,23 +529,26 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // Build receiver details
+    // Build receiver details dynamically
+    const settings = dbData.settings || {};
+    const fallbackUpi = (settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : (settings.upi_id || 'tpayx@upi'));
+
     const bank = (dbData.bank_accounts || []).find(b => b.user_id == finalReceiverId && b.user_id != userId && b.status === 'Active') ||
-      (dbData.bank_accounts || []).find(b => b.user_id == 1 && b.status === 'Active') || {
-      bank_name: 'HDFC Bank',
-      account_holder: 'Tushar Admin',
-      account_number: '50100481729381',
-      ifsc_code: 'HDFCO000123',
-      upi_id: '8763527330@upi'
+      (dbData.bank_accounts || []).find(b => (b.user_id == 1 && b.status === 'Active')) || {
+      bank_name: settings.admin_bank_name || 'State Bank of India',
+      account_holder: settings.admin_receiver_name || 'TpayX Official Desk',
+      account_number: settings.admin_account_number || '389201948572',
+      ifsc_code: settings.admin_ifsc_code || 'SBIN0001234',
+      upi_id: fallbackUpi
     };
-    const receiverUser = (dbData.users || []).find(u => u.id == finalReceiverId && u.id != userId) || (dbData.users || []).find(u => u.id == 1) || { mobile: '8763527330' };
+    const receiverUser = (dbData.users || []).find(u => u.id == finalReceiverId && u.id != userId) || (dbData.users || []).find(u => u.role === 'admin' || u.id == 1) || { mobile: 'Official Desk' };
     const receiverDetails = {
-      receiver_name: bank.account_holder,
-      bank_name: bank.bank_name,
-      account_number: bank.account_number,
-      ifsc_code: bank.ifsc_code,
-      upi_id: bank.upi_id || '8763527330@upi',
-      mobile: receiverUser.mobile
+      receiver_name: bank.account_holder || settings.admin_receiver_name || 'TpayX Official Desk',
+      bank_name: bank.bank_name || settings.admin_bank_name || 'Bank',
+      account_number: bank.account_number || settings.admin_account_number || 'N/A',
+      ifsc_code: bank.ifsc_code || settings.admin_ifsc_code || 'N/A',
+      upi_id: bank.upi_id || fallbackUpi,
+      mobile: receiverUser.mobile || 'Official Desk'
     };
 
     // Save screenshot if provided
@@ -554,10 +558,18 @@ exports.createOrder = async (req, res) => {
       screenshotPath = saveBase64File(screenshot, 'screenshot');
     }
 
-    await query.run(`
-      INSERT INTO orders (order_id, user_id, seller_id, asset_type, amount, expected_income, quota, status, utr, screenshot_path)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [orderId, userId, finalReceiverId, assetType, amtNum, expectedIncome, quota, 'Confirming', cleanUtr, screenshotPath]);
+    try {
+      await query.run(`
+        INSERT INTO orders (order_id, user_id, seller_id, receiver_id, asset_type, amount, expected_income, quota, status, utr, screenshot_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [orderId, userId, finalReceiverId, finalReceiverId, assetType, amtNum, expectedIncome, quota, 'Confirming', cleanUtr, screenshotPath]);
+    } catch (insertErr) {
+      // Fallback if receiver_id column not added yet
+      await query.run(`
+        INSERT INTO orders (order_id, user_id, seller_id, asset_type, amount, expected_income, quota, status, utr, screenshot_path)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [orderId, userId, finalReceiverId, assetType, amtNum, expectedIncome, quota, 'Confirming', cleanUtr, screenshotPath]);
+    }
 
     if (withdrawal_id) {
       try {
@@ -669,40 +681,32 @@ const executeOrderApproval = async (order, txnId) => {
     dbOrder.utr = txnId || order.utr || dbOrder.utr;
   }
 
-  // 1b. If matched to a P2P seller (receiver_id != 1), debit receiver's wallet and complete matched withdrawal
-  const receiverId = order.receiver_id || (dbOrder ? dbOrder.receiver_id : null);
+  // 1b. If matched to a P2P seller (receiver_id != 1 && seller_id != 1), debit receiver's wallet and complete matched withdrawal
+  const receiverId = order.seller_id || order.receiver_id || (dbOrder ? (dbOrder.seller_id || dbOrder.receiver_id) : null);
   if (receiverId && receiverId != 1) {
-    const receiver = (dbData.users || []).find(u => u.id == receiverId);
+    const receiver = await query.get('SELECT * FROM users WHERE id = ?', [receiverId]) || (dbData.users || []).find(u => u.id == receiverId);
     if (receiver) {
-      receiver.bcoin_balance = Math.max(0, Number(receiver.bcoin_balance || 0) - Number(order.amount || 0));
-      await query.run('UPDATE users SET bcoin_balance = ? WHERE id = ?', [receiver.bcoin_balance, receiver.id]);
+      const updatedBalance = Math.max(0, Number(receiver.bcoin_balance || 0) - Number(order.amount || 0));
+      await query.run('UPDATE users SET bcoin_balance = ? WHERE id = ?', [updatedBalance, receiver.id]);
+      
+      const cachedReceiver = (dbData.users || []).find(u => u.id == receiver.id);
+      if (cachedReceiver) cachedReceiver.bcoin_balance = updatedBalance;
 
       // Complete matched withdrawal request if linked
       const matchedWithId = order.withdrawal_id || (dbOrder ? dbOrder.withdrawal_id : null);
       if (matchedWithId) {
-        const w = (dbData.withdrawals || []).find(x => x.id == matchedWithId);
-        if (w && w.amount_pending <= 0) {
-          w.status = 'Completed';
-        }
+        try {
+          await query.run('UPDATE withdrawals SET status = "Completed", amount_pending = 0 WHERE id = ?', [matchedWithId]);
+        } catch (e) {}
       }
 
       // Add transaction log for receiver if not already logged
-      const existingTx = (dbData.transactions || []).find(t => t.user_id == receiver.id && t.type === 'Withdraw' && (t.order_id === order.order_id || (t.description && t.description.includes(order.order_id))));
-      if (!existingTx) {
-        const newTxId = ++idTrackers.transactions;
-        const bank = (dbData.bank_accounts || []).find(b => b.user_id == receiver.id && b.status === 'Active') || { bank_name: 'Bank', account_number: 'N/A', account_holder: receiver.username };
-        const desc = `Bank: ${bank.bank_name}, A/C: ${bank.account_number}, Holder: ${bank.account_holder}, UTR: ${order.utr || 'N/A'}, TXID: MWD_${Date.now()}, Note: P2P match withdrawal completed for Order ${order.order_id}`;
-        dbData.transactions.push({
-          id: newTxId,
-          user_id: receiver.id,
-          type: 'Withdraw',
-          amount: -Number(order.amount),
-          balance_after: receiver.bcoin_balance,
-          status: 'Completed',
-          order_id: order.order_id,
-          description: desc,
-          created_at: new Date().toISOString()
-        });
+      const desc = `Bank: ${order.bank_name || 'Bank'}, A/C: ${order.account_number || 'N/A'}, Holder: ${order.receiver_name || receiver.username}, UTR: ${order.utr || 'N/A'}, TXID: MWD_${Date.now()}, Note: P2P sale completed for Order ${order.order_id}`;
+      try {
+        await query.run('INSERT INTO transactions (user_id, type, amount, balance_after, description) VALUES (?, ?, ?, ?, ?)',
+          [receiver.id, 'Withdraw', -Number(order.amount), updatedBalance, desc]);
+      } catch (txErr) {
+        console.warn('Failed to insert withdrawal transaction:', txErr.message);
       }
     }
   }
