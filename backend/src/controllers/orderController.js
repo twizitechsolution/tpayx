@@ -205,38 +205,32 @@ exports.getPaymentQuote = async (req, res) => {
     if (assetType === 'INR') {
       loadDb();
 
-      // 1. Direct MySQL Query to find users whose T-Coin (bcoin_balance) wallet balance exceeds or equals required amount
+      // 1. Strict MySQL Query to find P2P receivers:
+      // - Must NOT be current buyer and NOT admin
+      // - Must NOT be blocked
+      // - Must have T-Coin (bcoin_balance) wallet balance >= required amount (STRICTLY bcoin_balance, NEVER inr_balance!)
+      // - MUST HAVE AN ACTIVE BANK ACCOUNT WITH REAL ACCOUNT NUMBER OR REAL UPI ID ADDED BY THE USER!
       let candidateUsers = [];
       try {
         let dbUsers = await query.all(`
-          SELECT u.id, u.uid, u.mobile, u.username, u.bcoin_balance, u.inr_balance,
+          SELECT u.id, u.uid, u.mobile, u.username, u.bcoin_balance,
                  b.id as bank_id, b.account_holder, b.bank_name, b.account_number, b.ifsc_code, b.upi_id
           FROM users u
-          LEFT JOIN bank_accounts b ON b.user_id = u.id AND (LOWER(b.status) = 'active' OR b.status IS NULL OR b.status = '')
+          INNER JOIN bank_accounts b ON b.user_id = u.id 
+            AND (LOWER(b.status) = 'active' OR b.status IS NULL OR b.status = '')
+            AND (
+              (b.account_number IS NOT NULL AND b.account_number != '' AND b.account_number != 'N/A')
+              OR
+              (b.upi_id IS NOT NULL AND b.upi_id != '' AND b.upi_id != 'N/A')
+            )
           WHERE u.id != ?
             AND (u.is_blocked = 0 OR u.is_blocked IS NULL)
             AND (u.role != 'admin' OR u.role IS NULL)
             AND u.id != 1
-            AND (COALESCE(u.bcoin_balance, 0) >= ? OR COALESCE(u.inr_balance, 0) >= ?)
+            AND COALESCE(u.bcoin_balance, 0) >= ?
           ORDER BY RAND()
-        `, [userId, amtNum, amtNum]);
+        `, [userId, amtNum]);
         
-        // If no user has >= amtNum, find any active non-admin user with positive balance (> 0), preferring highest balance
-        if (!Array.isArray(dbUsers) || dbUsers.length === 0) {
-          dbUsers = await query.all(`
-            SELECT u.id, u.uid, u.mobile, u.username, u.bcoin_balance, u.inr_balance,
-                   b.id as bank_id, b.account_holder, b.bank_name, b.account_number, b.ifsc_code, b.upi_id
-            FROM users u
-            LEFT JOIN bank_accounts b ON b.user_id = u.id AND (LOWER(b.status) = 'active' OR b.status IS NULL OR b.status = '')
-            WHERE u.id != ?
-              AND (u.is_blocked = 0 OR u.is_blocked IS NULL)
-              AND (u.role != 'admin' OR u.role IS NULL)
-              AND u.id != 1
-              AND (COALESCE(u.bcoin_balance, 0) > 0 OR COALESCE(u.inr_balance, 0) > 0)
-            ORDER BY GREATEST(COALESCE(u.bcoin_balance, 0), COALESCE(u.inr_balance, 0)) DESC
-            LIMIT 10
-          `, [userId]);
-        }
         if (Array.isArray(dbUsers) && dbUsers.length > 0) {
           candidateUsers = dbUsers;
         }
@@ -244,14 +238,18 @@ exports.getPaymentQuote = async (req, res) => {
         console.warn('[P2P Match] MySQL query fallback:', err.message);
       }
 
-      // If MySQL query returned empty (e.g. offline dev or unhydrated), check dbData.users
+      // If MySQL query returned empty, check dbData.users requiring active bank details and bcoin_balance >= amtNum
       if (candidateUsers.length === 0) {
         candidateUsers = (dbData.users || [])
           .filter(u => Number(u.id) !== Number(userId) && Number(u.id) !== 1 && !u.is_blocked && Number(u.bcoin_balance || 0) >= amtNum)
           .map(u => {
-            const bank = (dbData.bank_accounts || []).find(b => b.user_id == u.id && b.status === 'Active') || {};
-            return { ...u, ...bank };
-          });
+            const bank = (dbData.bank_accounts || []).find(b => 
+              b.user_id == u.id && (b.status === 'Active' || !b.status) &&
+              ((b.account_number && b.account_number !== 'N/A') || (b.upi_id && b.upi_id !== 'N/A'))
+            );
+            return bank ? { ...u, ...bank } : null;
+          })
+          .filter(Boolean);
       }
 
       // 2. Strict Filter: A user with an active, unfinalized order (Pending, Confirming, Admin Review, Disputed) CANNOT receive another order!
@@ -331,16 +329,13 @@ exports.getPaymentQuote = async (req, res) => {
         receiverId = matchedUser.id;
         timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         
-        const settings = dbData.settings || {};
-        const fallbackUpi = settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : 'merchant@upi';
-
         receiverDetails = {
           receiver_name: matchedUser.account_holder || matchedUser.username || `Seller ${matchedUser.uid || matchedUser.id}`,
-          bank_name: matchedUser.bank_name || 'Bank',
-          account_number: matchedUser.account_number || 'N/A',
-          ifsc_code: matchedUser.ifsc_code || 'N/A',
-          upi_id: matchedUser.upi_id || (matchedUser.mobile ? `${matchedUser.mobile}@upi` : fallbackUpi),
-          mobile: matchedUser.mobile
+          bank_name: matchedUser.bank_name || '',
+          account_number: matchedUser.account_number || '',
+          ifsc_code: matchedUser.ifsc_code || '',
+          upi_id: matchedUser.upi_id || '',
+          mobile: matchedUser.mobile || ''
         };
       } else {
         // Fallback to Platform / Admin dynamically configured in Admin Panel Settings
@@ -351,7 +346,7 @@ exports.getPaymentQuote = async (req, res) => {
         const upiList = settings.upi_ids ? settings.upi_ids.split(',').map(s => s.trim()).filter(Boolean) : [];
         const fallbackUpi = upiList.length > 0 ? upiList[Math.floor(Math.random() * upiList.length)] : (settings.upi_id || 'tpayx@upi');
 
-        const adminBanks = (dbData.bank_accounts || []).filter(b => (b.user_id == 1 && b.status === 'Active'));
+        const adminBanks = (dbData.bank_accounts || []).filter(b => (b.user_id == 1 && (b.status === 'Active' || !b.status)));
         const bank = adminBanks.length > 0
           ? adminBanks[Math.floor(Math.random() * adminBanks.length)]
           : {
@@ -366,9 +361,9 @@ exports.getPaymentQuote = async (req, res) => {
 
         receiverDetails = {
           receiver_name: bank.account_holder || settings.admin_receiver_name || 'P2P Desk',
-          bank_name: bank.bank_name || settings.admin_bank_name || 'Bank',
-          account_number: bank.account_number || settings.admin_account_number || 'N/A',
-          ifsc_code: bank.ifsc_code || settings.admin_ifsc_code || 'N/A',
+          bank_name: bank.bank_name || settings.admin_bank_name || 'State Bank of India',
+          account_number: bank.account_number || settings.admin_account_number || '',
+          ifsc_code: bank.ifsc_code || settings.admin_ifsc_code || '',
           upi_id: bank.upi_id || fallbackUpi,
           mobile: receiverUser.mobile || ''
         };
@@ -547,53 +542,68 @@ exports.createOrder = async (req, res) => {
       withdrawal_id = null;
     }
 
-    // Ensure the order is assigned to a real seller with wallet balance
-    if (!finalReceiverId || finalReceiverId == 1) {
+    // P2P Seller validation: If finalReceiverId is set to a user, verify they have an active bank account
+    let bank = null;
+    let receiverUser = null;
+
+    if (finalReceiverId && finalReceiverId != 1) {
       try {
-        const topUser = await query.get(`
-          SELECT id FROM users
-          WHERE id != ? AND id != 1 AND (is_blocked = 0 OR is_blocked IS NULL) AND (role != 'admin' OR role IS NULL)
-            AND (COALESCE(bcoin_balance, 0) > 0 OR COALESCE(inr_balance, 0) > 0)
-          ORDER BY GREATEST(COALESCE(bcoin_balance, 0), COALESCE(inr_balance, 0)) DESC
-          LIMIT 1
-        `, [userId]);
-        if (topUser && topUser.id) {
-          finalReceiverId = topUser.id;
-          console.log(`[OrderAssignment] Dynamically matched seller ${finalReceiverId} for order ${orderId}`);
+        bank = await query.get(
+          `SELECT * FROM bank_accounts 
+           WHERE user_id = ? 
+             AND (LOWER(status) = "active" OR status IS NULL OR status = "") 
+             AND ((account_number IS NOT NULL AND account_number != '' AND account_number != 'N/A') OR (upi_id IS NOT NULL AND upi_id != '' AND upi_id != 'N/A'))
+           LIMIT 1`,
+          [finalReceiverId]
+        );
+      } catch (e) {}
+      if (!bank) {
+        bank = (dbData.bank_accounts || []).find(b => 
+          b.user_id == finalReceiverId && b.user_id != userId && (b.status === 'Active' || !b.status) &&
+          ((b.account_number && b.account_number !== 'N/A') || (b.upi_id && b.upi_id !== 'N/A'))
+        ) || null;
+      }
+
+      // If user has NO bank account, fallback to Admin (never assign user without bank details!)
+      if (!bank) {
+        console.warn(`[OrderAssignment] User ${finalReceiverId} has no verified bank account. Falling back to Admin.`);
+        finalReceiverId = 1;
+      } else {
+        try {
+          receiverUser = await query.get('SELECT * FROM users WHERE id = ?', [finalReceiverId]);
+        } catch (e) {}
+        if (!receiverUser) {
+          receiverUser = (dbData.users || []).find(u => u.id == finalReceiverId) || {};
         }
-      } catch (e) {
-        console.warn('[OrderAssignment] Error finding top seller:', e.message);
       }
     }
 
-    // Build receiver details dynamically
-    let bank = null;
-    try {
-      bank = await query.get('SELECT * FROM bank_accounts WHERE user_id = ? AND (LOWER(status) = "active" OR status IS NULL OR status = "") LIMIT 1', [finalReceiverId]);
-    } catch (e) {}
-    if (!bank) {
-      bank = (dbData.bank_accounts || []).find(b => b.user_id == finalReceiverId && b.user_id != userId) || {};
-    }
-
-    let receiverUser = null;
-    try {
-      receiverUser = await query.get('SELECT * FROM users WHERE id = ?', [finalReceiverId]);
-    } catch (e) {}
-    if (!receiverUser) {
-      receiverUser = (dbData.users || []).find(u => u.id == finalReceiverId) || {};
-    }
-
     const settings = dbData.settings || {};
-    const fallbackUpi = (settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : (settings.upi_id || ''));
+    const fallbackUpi = (settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : (settings.upi_id || 'tpayx@upi'));
 
-    const receiverDetails = {
-      receiver_name: bank.account_holder || receiverUser.username || settings.admin_receiver_name || 'P2P Seller',
-      bank_name: bank.bank_name || settings.admin_bank_name || 'Bank',
-      account_number: bank.account_number || settings.admin_account_number || 'N/A',
-      ifsc_code: bank.ifsc_code || settings.admin_ifsc_code || 'N/A',
-      upi_id: bank.upi_id || (receiverUser.mobile ? `${receiverUser.mobile}@upi` : fallbackUpi),
-      mobile: receiverUser.mobile || ''
-    };
+    let receiverDetails = null;
+    if (finalReceiverId && finalReceiverId != 1 && bank) {
+      receiverDetails = {
+        receiver_name: bank.account_holder || receiverUser?.username || `Seller ${receiverUser?.uid || finalReceiverId}`,
+        bank_name: bank.bank_name || '',
+        account_number: bank.account_number || '',
+        ifsc_code: bank.ifsc_code || '',
+        upi_id: bank.upi_id || '',
+        mobile: receiverUser?.mobile || ''
+      };
+    } else {
+      finalReceiverId = 1;
+      const adminBanks = (dbData.bank_accounts || []).filter(b => (b.user_id == 1 && (b.status === 'Active' || !b.status)));
+      const adminBank = adminBanks.length > 0 ? adminBanks[0] : {};
+      receiverDetails = {
+        receiver_name: adminBank.account_holder || settings.admin_receiver_name || 'P2P Desk',
+        bank_name: adminBank.bank_name || settings.admin_bank_name || 'State Bank of India',
+        account_number: adminBank.account_number || settings.admin_account_number || '',
+        ifsc_code: adminBank.ifsc_code || settings.admin_ifsc_code || '',
+        upi_id: adminBank.upi_id || fallbackUpi,
+        mobile: ''
+      };
+    }
 
     // Save screenshot if provided
     let screenshotPath = null;
@@ -672,35 +682,55 @@ exports.submitUtr = async (req, res) => {
 };
 
 exports.listOrders = async (req, res) => {
-  const userId = req.user.id;
+  const userId = Number(req.user.id);
   try {
-    const userMobile = req.user && req.user.mobile ? String(req.user.mobile).trim() : '';
-    const userUid = req.user && req.user.uid ? String(req.user.uid).trim() : '';
     let orders = [];
     try {
-      orders = await query.all(`
-        SELECT o.*, u.mobile as user_mobile, u.uid as user_uid
-        FROM orders o
-        LEFT JOIN users u ON o.user_id = u.id
-        WHERE o.user_id = ?
-           OR (? != '' AND (u.mobile = ? OR o.user_mobile = ?))
-           OR (? != '' AND (u.uid = ? OR o.user_uid = ?))
-           OR o.seller_id = ?
-           OR o.receiver_id = ?
-        ORDER BY o.id DESC
-      `, [userId, userMobile, userMobile, userMobile, userUid, userUid, userUid, userId, userId]) || [];
-    } catch (dbErr) {
-      orders = await query.all('SELECT * FROM orders WHERE user_id = ? OR seller_id = ? OR receiver_id = ? ORDER BY id DESC', [userId, userId, userId]) || [];
+      orders = await query.all(
+        'SELECT * FROM orders WHERE user_id = ? OR seller_id = ? OR receiver_id = ? ORDER BY id DESC',
+        [userId, userId, userId]
+      ) || [];
+    } catch (colErr) {
+      try {
+        orders = await query.all(
+          'SELECT * FROM orders WHERE user_id = ? OR seller_id = ? ORDER BY id DESC',
+          [userId, userId]
+        ) || [];
+      } catch (colErr2) {
+        orders = await query.all(
+          'SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC',
+          [userId]
+        ) || [];
+      }
     }
+
+    // Merge in-memory orders if available
+    loadDb();
+    const memOrders = (dbData.orders || []).filter(o => 
+      Number(o.user_id) === userId || Number(o.seller_id) === userId || Number(o.receiver_id) === userId
+    );
+    const seenIds = new Set(orders.map(o => String(o.order_id || o.id)));
+    for (const mo of memOrders) {
+      if (!seenIds.has(String(mo.order_id || mo.id))) {
+        orders.push(mo);
+        seenIds.add(String(mo.order_id || mo.id));
+      }
+    }
+
     const now = Date.now();
-    const processedOrders = (orders || []).map(order => {
-      const createdAtMs = order.created_at ? new Date(order.created_at).getTime() : now;
+    const processedOrders = orders.map(order => {
+      let createdAtMs = now;
+      if (order.created_at) {
+        const s = String(order.created_at);
+        createdAtMs = s.endsWith('Z') ? new Date(s).getTime() : new Date(s.replace(' ', 'T') + 'Z').getTime();
+        if (isNaN(createdAtMs)) createdAtMs = new Date(order.created_at).getTime();
+      }
       const expiryMs = order.timer_expiry
         ? new Date(order.timer_expiry).getTime()
-        : (isNaN(createdAtMs) ? now + 15 * 60 * 1000 : createdAtMs + 15 * 60 * 1000);
+        : (createdAtMs + 15 * 60 * 1000);
       const timerExpiryIso = new Date(expiryMs).toISOString();
 
-      let currentStatus = order.status;
+      let currentStatus = order.status || 'Pending';
       // If order is still 'Confirming' or 'Pending', but 15 minutes have passed, transition to 'Admin Review'
       if (['Confirming', 'Pending'].includes(currentStatus)) {
         if (now > expiryMs) {
@@ -709,19 +739,22 @@ exports.listOrders = async (req, res) => {
         }
       }
 
-      const isSeller = Number(order.user_id) !== Number(userId) && (Number(order.seller_id) === Number(userId) || Number(order.receiver_id) === Number(userId));
+      const recId = order.receiver_id || order.seller_id;
+      const isSeller = Number(order.user_id) !== userId && (Number(order.seller_id) === userId || Number(order.receiver_id) === userId);
       return {
         ...order,
         is_seller: isSeller,
-        receiver_id: order.receiver_id || order.seller_id,
+        seller_id: order.seller_id || recId,
+        receiver_id: recId,
         status: currentStatus,
+        asset_type: order.asset_type || 'INR',
         timer_expiry: timerExpiryIso
       };
     });
 
     return res.json({ success: true, orders: processedOrders });
   } catch (err) {
-    console.error(err);
+    console.error('[listOrders error]:', err);
     return res.status(500).json({ error: 'Internal Server Error' });
   }
 };

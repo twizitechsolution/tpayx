@@ -60,15 +60,23 @@ let currentSyncPromise = null;
 async function syncDbFromMysql() {
   if (!mysqlPool) return;
   try {
-    // 0. Ensure schema compatibility for orders columns
+    // 0. Ensure schema compatibility for orders columns (compatible with all MySQL and MariaDB versions)
+    const safeAddColumn = async (table, col, def) => {
+      try {
+        await mysqlPool.query(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+      } catch (e) {
+        // Ignore duplicate column or permission notice
+      }
+    };
+    await safeAddColumn('orders', 'receiver_id', 'INT DEFAULT NULL');
+    await safeAddColumn('orders', 'seller_id', 'INT DEFAULT NULL');
+    await safeAddColumn('orders', 'asset_type', 'VARCHAR(20) DEFAULT "INR"');
+    await safeAddColumn('orders', 'timer_expiry', 'VARCHAR(50) DEFAULT NULL');
     try {
-      await mysqlPool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS receiver_id INT DEFAULT NULL");
-      await mysqlPool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS seller_id INT DEFAULT NULL");
       await mysqlPool.query("UPDATE orders SET receiver_id = seller_id WHERE receiver_id IS NULL AND seller_id IS NOT NULL");
       await mysqlPool.query("UPDATE orders SET seller_id = receiver_id WHERE seller_id IS NULL AND receiver_id IS NOT NULL");
-    } catch (migErr) {
-      // Non-fatal if DB user lacks alter permission or MariaDB syntax difference
-    }
+      await mysqlPool.query("UPDATE orders SET asset_type = 'INR' WHERE asset_type IS NULL OR asset_type = ''");
+    } catch (migErr) {}
 
     const [userRows] = await mysqlPool.query('SELECT * FROM users');
     if (Array.isArray(userRows)) dbData.users = userRows;

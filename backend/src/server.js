@@ -246,7 +246,62 @@ app.post('/api/user/claim-newbie', authMiddleware, userController.claimNewbieBon
 app.get('/api/user/team', authMiddleware, userController.getTeamDetails);
 app.get('/api/user/transactions', authMiddleware, async (req, res) => {
   try {
-    const list = await query.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC', [req.user.id]);
+    const userId = Number(req.user.id);
+    let list = [];
+    try {
+      list = await query.all('SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC', [userId]) || [];
+    } catch (e) {
+      list = [];
+    }
+
+    // Merge from dbData.transactions if any in-memory
+    loadDb();
+    const memTxns = (dbData.transactions || []).filter(t => Number(t.user_id) === userId);
+    const seenTxIds = new Set(list.map(t => String(t.id)));
+    for (const mt of memTxns) {
+      if (!seenTxIds.has(String(mt.id))) {
+        list.push(mt);
+        seenTxIds.add(String(mt.id));
+      }
+    }
+
+    // Ensure all completed and active deposit orders are represented in Quota/Transaction History
+    try {
+      const userOrders = await query.all(
+        'SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC',
+        [userId]
+      ) || [];
+
+      for (const ord of userOrders) {
+        const hasTx = list.some(t => t.description && t.description.includes(ord.order_id));
+        if (!hasTx && ['Completed', 'Confirming', 'Pending'].includes(ord.status)) {
+          // Add Deposit entry
+          list.push({
+            id: `ord_${ord.id}_dep`,
+            user_id: userId,
+            type: 'Deposit',
+            amount: Number(ord.amount || 0),
+            balance_after: Number(ord.amount || 0),
+            description: `Deposit principal for Order ${ord.order_id}`,
+            created_at: ord.created_at || new Date().toISOString()
+          });
+          // Add Profit/Income entry if completed
+          if (ord.status === 'Completed' && Number(ord.expected_income || 0) > 0) {
+            list.push({
+              id: `ord_${ord.id}_inc`,
+              user_id: userId,
+              type: 'Commission',
+              amount: Number(ord.expected_income || 0),
+              balance_after: Number(ord.quota || ord.amount || 0),
+              description: `Interest bonus for Order ${ord.order_id}`,
+              created_at: ord.created_at || new Date().toISOString()
+            });
+          }
+        }
+      }
+    } catch (ordErr) {}
+
+    list.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     return res.json({ success: true, transactions: list });
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -1197,18 +1252,32 @@ app.get('/api/user/p2p-requests', authMiddleware, async (req, res) => {
         [userId, userId]
       );
       historyRows = await query.all(
-        'SELECT id, order_id, amount, utr, status, created_at FROM orders WHERE (seller_id = ? OR receiver_id = ?) ORDER BY id DESC LIMIT 20',
+        `SELECT o.id, o.order_id, o.amount, o.utr, o.status, o.created_at,
+                u.username as buyer_username, u.mobile as buyer_mobile, u.uid as buyer_uid
+         FROM orders o
+         LEFT JOIN users u ON o.user_id = u.id
+         WHERE (o.seller_id = ? OR o.receiver_id = ?)
+         ORDER BY o.id DESC LIMIT 30`,
         [userId, userId]
       ) || [];
     } catch (e) {
-      completedSalesRes = await query.get(
-        'SELECT COUNT(*) as count, SUM(amount) as total FROM orders WHERE seller_id = ? AND status = "Completed"',
-        [userId]
-      );
-      historyRows = await query.all(
-        'SELECT id, order_id, amount, utr, status, created_at FROM orders WHERE seller_id = ? ORDER BY id DESC LIMIT 20',
-        [userId]
-      ) || [];
+      try {
+        completedSalesRes = await query.get(
+          'SELECT COUNT(*) as count, SUM(amount) as total FROM orders WHERE seller_id = ? AND status = "Completed"',
+          [userId]
+        );
+        historyRows = await query.all(
+          `SELECT o.id, o.order_id, o.amount, o.utr, o.status, o.created_at,
+                  u.username as buyer_username, u.mobile as buyer_mobile, u.uid as buyer_uid
+           FROM orders o
+           LEFT JOIN users u ON o.user_id = u.id
+           WHERE o.seller_id = ?
+           ORDER BY o.id DESC LIMIT 30`,
+          [userId]
+        ) || [];
+      } catch (e2) {
+        historyRows = [];
+      }
     }
 
     return res.json({
