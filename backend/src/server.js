@@ -2087,6 +2087,20 @@ if (!process.env.VERCEL) {
       app.listen(PORT, () => {
         console.log(`TpayX Backend API running at http://localhost:${PORT}`);
       });
+
+      // Dual-Port Binding: Also listen on port 5005 as backup listener to match Nginx proxy
+      if (Number(PORT) !== 5005) {
+        try {
+          const http = require('http');
+          const backupServer = http.createServer(app);
+          backupServer.listen(5005, () => {
+            console.log(`TpayX Dual Listener active on backup port 5005 (matches Nginx proxy)`);
+          });
+          backupServer.on('error', (err) => {
+            console.warn(`[Port 5005 Notice]: ${err.message} (Primary port ${PORT} active)`);
+          });
+        } catch (portErr) {}
+      }
     } catch (err) {
       console.error('Failed to boot application:', err);
     }
