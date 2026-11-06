@@ -68,6 +68,7 @@ const fs = require('fs');
 // Static serving for uploaded screenshots/files & static public assets
 const staticUploadsDir = path.join(__dirname, '../public/uploads');
 const staticPublicDir = path.join(__dirname, '../public');
+const adminDistDir = path.join(__dirname, '../../admin-panel/dist');
 const tmpUploadsDir = '/tmp/uploads';
 
 if (!fs.existsSync(staticUploadsDir)) {
@@ -77,6 +78,14 @@ if (!fs.existsSync(staticUploadsDir)) {
 app.use('/uploads', express.static(staticUploadsDir));
 app.use('/api/uploads', express.static(staticUploadsDir));
 app.use(express.static(staticPublicDir));
+
+// Serve Admin Panel SPA
+if (fs.existsSync(adminDistDir)) {
+  app.use('/admin', express.static(adminDistDir));
+  app.get(['/admin', '/admin/*', '/login', '/admin/login'], (req, res) => {
+    return res.sendFile(path.join(adminDistDir, 'index.html'));
+  });
+}
 
 if (process.env.VERCEL) {
   if (!fs.existsSync(tmpUploadsDir)) {

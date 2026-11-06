@@ -1061,7 +1061,7 @@ exports.winpeyCreatePayout = async (payoutId, amount, bank, phone) => {
       account_name: holderName,
       account_number: String(bank.account_number).trim(),
       ifsc_code: String(bank.ifsc_code).trim(),
-      notify_url: 'https://register.TpayX.us.cc/api/payment/payout-callback',
+      notify_url: `${process.env.APP_URL || 'https://tpayx.us.cc'}/api/payment/payout-callback`,
       currency: 'INR',
       ext: 'payment'
     };

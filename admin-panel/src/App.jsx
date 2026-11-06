@@ -8,8 +8,17 @@ import SettingsManager from './components/SettingsManager';
 import DisputeManager from './components/DisputeManager';
 import ReportsManager from './components/ReportsManager';
 
-const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
-const API_BASE = rawApiUrl.endsWith('/api') ? `${rawApiUrl}/admin` : `${rawApiUrl}/api/admin`;
+// Dynamic API Base URL: automatically adapts to tpayx.us.cc, tpayx.usa.cc, or current window origin
+const getApiBase = () => {
+  if (typeof window !== 'undefined' && window.location && window.location.origin) {
+    if (window.location.protocol.startsWith('http')) {
+      return `${window.location.origin}/api/admin`;
+    }
+  }
+  const rawApiUrl = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+  return rawApiUrl.endsWith('/api') ? `${rawApiUrl}/admin` : `${rawApiUrl}/api/admin`;
+};
+const API_BASE = getApiBase();
 
 // Robust Error Boundary to guarantee no blank/white screens occur
 class ErrorBoundary extends React.Component {
