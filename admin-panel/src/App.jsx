@@ -709,7 +709,19 @@ const Login = ({ setToken }) => {
       }
     } catch (err) {
       console.error('Login attempt error:', err);
-      setError(err.response?.data?.error || 'Invalid administrator username or password.');
+      const status = err.response?.status;
+      const serverMsg = err.response?.data?.error || err.response?.data?.message;
+      if (serverMsg) {
+        setError(serverMsg);
+      } else if (status === 404) {
+        setError(`Backend API 404 Not Found at: ${err.config?.url || 'endpoint'}. Nginx reverse proxy for /api/ is missing.`);
+      } else if (status === 502 || status === 503) {
+        setError(`Backend server offline (HTTP ${status} Bad Gateway). Please run: pm2 restart all`);
+      } else if (!err.response) {
+        setError(`Network error: Cannot reach backend server at ${err.config?.url || 'API'}. Check connection.`);
+      } else {
+        setError(`Login error (HTTP ${status || 'unknown'}).`);
+      }
     } finally {
       setLoading(false);
     }
