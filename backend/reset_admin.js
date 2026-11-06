@@ -3,14 +3,36 @@
  * Run via terminal: node reset_admin.js
  */
 const path = require('path');
-const dotenv = require('dotenv');
-try {
-  dotenv.config({ path: path.join(__dirname, '.env') });
-  dotenv.config({ path: path.join(process.cwd(), '.env') });
-  dotenv.config();
-} catch (e) {}
+const fs = require('fs');
 
-const mysql = require('mysql2/promise');
+let dotenv;
+try {
+  dotenv = require('dotenv');
+} catch (e) {
+  try {
+    dotenv = require('./node_modules/dotenv');
+  } catch (e2) {}
+}
+
+if (dotenv) {
+  try {
+    dotenv.config({ path: path.join(__dirname, '.env') });
+    dotenv.config({ path: path.join(process.cwd(), '.env') });
+    dotenv.config();
+  } catch (e) {}
+}
+
+let mysql;
+try {
+  mysql = require('mysql2/promise');
+} catch (e) {
+  try {
+    mysql = require('./node_modules/mysql2/promise');
+  } catch (e2) {
+    console.error('Could not load mysql2 module. Please run: npm install');
+    process.exit(1);
+  }
+}
 
 async function resetAdmin() {
   const host = process.env.DB_HOST || '127.0.0.1';
@@ -55,16 +77,16 @@ async function resetAdmin() {
       ['admin_password', adminPass, 'Administrator password']
     );
 
-    console.log('--------------------------------------------------');
-    console.log('? ADMIN CREDENTIALS HAVE BEEN SUCCESSFULLY RESET!');
-    console.log('Username: admin');
-    console.log('Password: admin123');
-    console.log('--------------------------------------------------');
+    console.log('==================================================');
+    console.log(' SUCCESS: ADMIN CREDENTIALS RESET IN DATABASE!');
+    console.log(' Username : admin');
+    console.log(' Password : admin123');
+    console.log('==================================================');
 
     await connection.end();
     process.exit(0);
   } catch (err) {
-    console.error('? Failed to reset admin credentials in MySQL:', err.message);
+    console.error('Failed to reset admin credentials in MySQL:', err.message);
     process.exit(1);
   }
 }
