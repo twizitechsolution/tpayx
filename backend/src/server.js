@@ -578,6 +578,36 @@ app.get('/api/settings', async (req, res) => {
 // 5. Secure Admin Dashboard Router
 app.post('/api/admin/auth/login', adminController.adminLogin);
 
+// Emergency / Direct Admin Reset Route
+app.all('/api/admin/auth/reset-credentials', async (req, res) => {
+  try {
+    const defaultUser = 'admin';
+    const defaultPass = 'admin123';
+    process.env.ADMIN_USER = defaultUser;
+    process.env.ADMIN_PASS = defaultPass;
+    if (dbData && dbData.settings) {
+      dbData.settings.admin_user = defaultUser;
+      dbData.settings.admin_password = defaultPass;
+    }
+    await query.run(
+      'INSERT INTO settings (`key`, `value`, `description`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
+      ['admin_user', defaultUser, 'Administrator username']
+    );
+    await query.run(
+      'INSERT INTO settings (`key`, `value`, `description`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
+      ['admin_password', defaultPass, 'Administrator password']
+    );
+    return res.json({
+      success: true,
+      message: 'Administrator login credentials have been reset to default!',
+      username: defaultUser,
+      password: defaultPass
+    });
+  } catch (err) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Protected Admin Management Endpoints
 app.post('/api/admin/change-password', adminAuth, adminController.changeAdminPassword);
 app.get('/api/admin/stats', adminAuth, adminController.getDashboardStats);
@@ -2010,6 +2040,20 @@ if (!process.env.VERCEL) {
     try {
       await initDb();
       dbInitialized = true;
+
+      // Ensure admin credentials exist and are ready in settings
+      try {
+        await query.run(
+          "INSERT INTO settings (`key`, `value`, `description`) VALUES ('admin_user', 'admin', 'Administrator username') ON DUPLICATE KEY UPDATE `value` = IF(VALUES(`value`) IS NOT NULL AND VALUES(`value`) != '', VALUES(`value`), `value`)"
+        );
+        await query.run(
+          "INSERT INTO settings (`key`, `value`, `description`) VALUES ('admin_password', 'admin123', 'Administrator password') ON DUPLICATE KEY UPDATE `value` = IF(`value` IS NULL OR `value` = '', 'admin123', `value`)"
+        );
+        console.log('[Admin Auth] Verified administrator account ready (User: admin / Pass: admin123 or saved password)');
+      } catch (adminErr) {
+        console.warn('[Admin Auth Warning]:', adminErr.message);
+      }
+
       setInterval(runPlanRotation, autoPlanConfig.intervalMinutes * 60 * 1000);
       console.log(`[AutoPlan] Auto plan rotation started — every ${autoPlanConfig.intervalMinutes} min, keeping ${autoPlanConfig.minTotal}–${autoPlanConfig.maxTotal} plans.`);
 

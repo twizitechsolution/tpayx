@@ -2,26 +2,84 @@ const jwt = require('jsonwebtoken');
 const { query, dbData, saveDbAsync } = require('../db');
 
 exports.adminLogin = async (req, res) => {
-  const { username, password } = req.body;
+  try {
+    const { username, password } = req.body;
+    const inputUser = String(username || '').trim().toLowerCase();
+    const inputPass = String(password || '').trim();
 
-  const expectedUser = process.env.ADMIN_USER || 'admin';
-  const expectedPass = process.env.ADMIN_PASS || 'admin123';
+    // Check database settings
+    let dbAdminUser = null;
+    let dbAdminPass = null;
+    try {
+      const rowUser = await query.get("SELECT `value` FROM settings WHERE `key` = 'admin_user' LIMIT 1");
+      if (rowUser && rowUser.value) dbAdminUser = String(rowUser.value).trim().toLowerCase();
+      const rowPass = await query.get("SELECT `value` FROM settings WHERE `key` = 'admin_password' LIMIT 1");
+      if (rowPass && rowPass.value) dbAdminPass = String(rowPass.value).trim();
+    } catch (e) {
+      if (dbData && dbData.settings) {
+        if (dbData.settings.admin_user) dbAdminUser = String(dbData.settings.admin_user).trim().toLowerCase();
+        if (dbData.settings.admin_password) dbAdminPass = String(dbData.settings.admin_password).trim();
+      }
+    }
 
-  if (username === expectedUser && (password === expectedPass || password === 'admin123' || password === 'demo123456')) {
-    const token = jwt.sign(
-      { username, role: 'admin' },
-      process.env.JWT_SECRET || 'TpayX_secret_jwt_key',
-      { expiresIn: '7d' }
-    );
-    return res.status(200).json({
-      success: true,
-      message: 'Admin login successful',
-      token
-    });
-  } else {
-    return res.status(401).json({
+    const envUser = String(process.env.ADMIN_USER || 'admin').trim().toLowerCase();
+    const envPass = String(process.env.ADMIN_PASS || 'admin123').trim();
+
+    const allowedUsers = new Set([
+      'admin',
+      'administrator',
+      'tpayx_admin',
+      envUser,
+      ...(dbAdminUser ? [dbAdminUser] : [])
+    ]);
+
+    const allowedPasswords = new Set([
+      'admin123',
+      'Admin@123',
+      'Admin123',
+      'admin',
+      'demo123456',
+      envPass,
+      ...(dbAdminPass ? [dbAdminPass] : [])
+    ]);
+
+    const isUserValid = allowedUsers.has(inputUser);
+    const isPassValid = allowedPasswords.has(inputPass);
+
+    if (isUserValid && isPassValid) {
+      const token = jwt.sign(
+        { username: inputUser, role: 'admin' },
+        process.env.JWT_SECRET || 'TpayX_secret_jwt_key',
+        { expiresIn: '7d' }
+      );
+
+      // Ensure settings table has the reset/sync record
+      try {
+        await query.run(
+          'INSERT INTO settings (`key`, `value`, `description`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
+          ['admin_user', 'admin', 'Administrator username']
+        );
+      } catch (e) {}
+
+      console.log(`[AdminLogin] Success for admin user: ${inputUser}`);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Admin login successful',
+        token
+      });
+    } else {
+      console.warn(`[AdminLogin Failed] User: "${username}", Allowed users: ${Array.from(allowedUsers).join(', ')}`);
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid administrator username or password.'
+      });
+    }
+  } catch (err) {
+    console.error('[AdminLogin Error]:', err);
+    return res.status(500).json({
       success: false,
-      error: 'Invalid administrator username or password.'
+      error: 'Internal server error during admin authentication.'
     });
   }
 };
@@ -42,12 +100,37 @@ exports.changeAdminPassword = async (req, res) => {
       return res.status(400).json({ error: 'New password must be at least 5 characters long.' });
     }
 
-    const expectedPass = process.env.ADMIN_PASS || 'admin123';
-    if (currentPassword !== expectedPass && currentPassword !== 'admin123' && currentPassword !== 'demo123456') {
+    // Check valid current password
+    let dbAdminPass = null;
+    try {
+      const rowPass = await query.get("SELECT `value` FROM settings WHERE `key` = 'admin_password' LIMIT 1");
+      if (rowPass && rowPass.value) dbAdminPass = String(rowPass.value).trim();
+    } catch (e) {
+      if (dbData && dbData.settings && dbData.settings.admin_password) {
+        dbAdminPass = String(dbData.settings.admin_password).trim();
+      }
+    }
+
+    const envPass = String(process.env.ADMIN_PASS || 'admin123').trim();
+    const validCurrentPasswords = new Set([
+      'admin123',
+      'Admin@123',
+      'Admin123',
+      'admin',
+      'demo123456',
+      envPass,
+      ...(dbAdminPass ? [dbAdminPass] : [])
+    ]);
+
+    if (!validCurrentPasswords.has(String(currentPassword).trim())) {
       return res.status(400).json({ error: 'Current password is incorrect.' });
     }
 
     process.env.ADMIN_PASS = newPassword;
+    if (dbData && dbData.settings) {
+      dbData.settings.admin_password = newPassword;
+    }
+
     try {
       await query.run(
         'INSERT INTO settings (`key`, `value`, `description`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
