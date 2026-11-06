@@ -78,6 +78,25 @@ async function syncDbFromMysql() {
       await mysqlPool.query("UPDATE orders SET asset_type = 'INR' WHERE asset_type IS NULL OR asset_type = ''");
     } catch (migErr) {}
 
+    // Auto-purge any legacy rogue / test accounts like Earnclub or Official Merchant
+    try {
+      await mysqlPool.query(`
+        DELETE FROM bank_accounts 
+        WHERE LOWER(COALESCE(upi_id, '')) LIKE '%earnclub%'
+           OR LOWER(COALESCE(account_holder, '')) LIKE '%official%'
+           OR LOWER(COALESCE(bank_name, '')) LIKE '%official%'
+      `);
+      await mysqlPool.query(`
+        UPDATE settings SET \`value\` = '' 
+        WHERE \`key\` IN ('admin_receiver_name', 'admin_bank_name') 
+          AND LOWER(COALESCE(\`value\`, '')) LIKE '%official%'
+      `);
+      await mysqlPool.query(`
+        UPDATE settings SET \`value\` = TRIM(BOTH ',' FROM REPLACE(REPLACE(\`value\`, 'Earnclub@apl', ''), 'earnclub@apl', ''))
+        WHERE \`key\` = 'upi_ids' AND LOWER(\`value\`) LIKE '%earnclub%'
+      `);
+    } catch (cleanErr) {}
+
     const [userRows] = await mysqlPool.query('SELECT * FROM users');
     if (Array.isArray(userRows)) dbData.users = userRows;
 

@@ -24,6 +24,7 @@ const authMiddleware = require('./middleware/authMiddleware');
 const adminAuth = require('./middleware/adminAuth');
 const adminController = require('./controllers/adminController');
 const { sendPushNotification } = require('./firebase');
+const { getRandomSellerName, getBankNameFromUpi, sanitizeSellerName, sanitizeBankName, getAdminFallbackReceiver } = require('./utils/merchantHelper');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -678,19 +679,19 @@ app.get('/api/admin/orders', adminAuth, async (req, res) => {
                         allBanks.find(b => b.user_id == resolvedRecId);
         receiver_mobile = receiverUser ? receiverUser.mobile : (bankAcc ? bankAcc.mobile || 'N/A' : 'N/A');
         receiver_uid = receiverUser ? receiverUser.uid : 'N/A';
-        receiver_name = bankAcc ? bankAcc.account_holder : (receiverUser ? receiverUser.username : 'P2P Seller');
-        receiver_bank = bankAcc ? bankAcc.bank_name : 'Bank';
+        receiver_name = sanitizeSellerName(bankAcc ? bankAcc.account_holder : (receiverUser ? receiverUser.username : null), resolvedRecId);
+        receiver_bank = sanitizeBankName(bankAcc ? bankAcc.bank_name : null, bankAcc ? bankAcc.upi_id : null);
         receiver_account = bankAcc ? bankAcc.account_number : 'N/A';
         receiver_upi = bankAcc && bankAcc.upi_id ? bankAcc.upi_id : (receiverUser ? `${receiverUser.mobile}@upi` : 'N/A');
       } else {
         const settings = dbData.settings || {};
-        const fallbackUpi = settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : (settings.upi_id || 'tpayx@upi');
-        receiver_mobile = settings.admin_mobile || '8763527330';
+        const fallback = getAdminFallbackReceiver(settings, order.id);
+        receiver_mobile = fallback.mobile;
         receiver_uid = 'ADMIN';
-        receiver_name = settings.admin_receiver_name || 'P2P Desk';
-        receiver_bank = settings.admin_bank_name || 'State Bank of India';
-        receiver_account = settings.admin_account_number || '';
-        receiver_upi = fallbackUpi;
+        receiver_name = fallback.receiver_name;
+        receiver_bank = fallback.bank_name;
+        receiver_account = fallback.account_number;
+        receiver_upi = fallback.upi_id;
       }
 
       const createdAtMs = order.created_at ? new Date(order.created_at).getTime() : Date.now();

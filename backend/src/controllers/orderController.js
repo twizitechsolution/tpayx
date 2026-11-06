@@ -1,4 +1,5 @@
 const { query, dbData, idTrackers, saveDb, saveDbAsync, loadDb, getBonusForAmount } = require('../db');
+const { getRandomSellerName, getBankNameFromUpi, sanitizeSellerName, sanitizeBankName, getAdminFallbackReceiver } = require('../utils/merchantHelper');
 
 // Helper to generate custom order IDs: gn/gu + YYYYMMDDHHMMSS + 6-digit uppercase hex
 function generateOrderId(prefix) {
@@ -228,6 +229,9 @@ exports.getPaymentQuote = async (req, res) => {
             AND (u.role != 'admin' OR u.role IS NULL)
             AND u.id != 1
             AND COALESCE(u.bcoin_balance, 0) >= ?
+            AND LOWER(COALESCE(b.upi_id, '')) NOT LIKE '%earnclub%'
+            AND LOWER(COALESCE(b.account_holder, '')) NOT LIKE '%official%'
+            AND LOWER(COALESCE(b.bank_name, '')) NOT LIKE '%official%'
           ORDER BY RAND()
         `, [userId, amtNum]);
         
@@ -245,7 +249,10 @@ exports.getPaymentQuote = async (req, res) => {
           .map(u => {
             const bank = (dbData.bank_accounts || []).find(b => 
               b.user_id == u.id && (b.status === 'Active' || !b.status) &&
-              ((b.account_number && b.account_number !== 'N/A') || (b.upi_id && b.upi_id !== 'N/A'))
+              ((b.account_number && b.account_number !== 'N/A') || (b.upi_id && b.upi_id !== 'N/A')) &&
+              !String(b.upi_id || '').toLowerCase().includes('earnclub') &&
+              !String(b.account_holder || '').toLowerCase().includes('official') &&
+              !String(b.bank_name || '').toLowerCase().includes('official')
             );
             return bank ? { ...u, ...bank } : null;
           })
@@ -329,9 +336,12 @@ exports.getPaymentQuote = async (req, res) => {
         receiverId = matchedUser.id;
         timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         
+        const sellerName = sanitizeSellerName(matchedUser.account_holder || matchedUser.username, matchedUser.id);
+        const bankName = sanitizeBankName(matchedUser.bank_name, matchedUser.upi_id);
+
         receiverDetails = {
-          receiver_name: matchedUser.account_holder || matchedUser.username || `Seller ${matchedUser.uid || matchedUser.id}`,
-          bank_name: matchedUser.bank_name || '',
+          receiver_name: sellerName,
+          bank_name: bankName,
           account_number: matchedUser.account_number || '',
           ifsc_code: matchedUser.ifsc_code || '',
           upi_id: matchedUser.upi_id || '',
@@ -339,34 +349,13 @@ exports.getPaymentQuote = async (req, res) => {
         };
       } else {
         // Fallback to Platform / Admin dynamically configured in Admin Panel Settings
+        // Strictly uses admin-configured UPI with a natural random Indian seller name (never "Official Merchant")
         receiverId = 1;
         timerExpiry = new Date(Date.now() + 15 * 60 * 1000).toISOString();
         
+        loadDb();
         const settings = dbData.settings || {};
-        const upiList = settings.upi_ids ? settings.upi_ids.split(',').map(s => s.trim()).filter(Boolean) : [];
-        const fallbackUpi = upiList.length > 0 ? upiList[Math.floor(Math.random() * upiList.length)] : (settings.upi_id || 'tpayx@upi');
-
-        const adminBanks = (dbData.bank_accounts || []).filter(b => (b.user_id == 1 && (b.status === 'Active' || !b.status)));
-        const bank = adminBanks.length > 0
-          ? adminBanks[Math.floor(Math.random() * adminBanks.length)]
-          : {
-              bank_name: settings.admin_bank_name || 'State Bank of India',
-              account_holder: settings.admin_receiver_name || 'P2P Desk',
-              account_number: settings.admin_account_number || '',
-              ifsc_code: settings.admin_ifsc_code || '',
-              upi_id: fallbackUpi
-            };
-
-        const receiverUser = (dbData.users || []).find(u => u.role === 'admin' || u.id == 1) || { mobile: '' };
-
-        receiverDetails = {
-          receiver_name: bank.account_holder || settings.admin_receiver_name || 'P2P Desk',
-          bank_name: bank.bank_name || settings.admin_bank_name || 'State Bank of India',
-          account_number: bank.account_number || settings.admin_account_number || '',
-          ifsc_code: bank.ifsc_code || settings.admin_ifsc_code || '',
-          upi_id: bank.upi_id || fallbackUpi,
-          mobile: receiverUser.mobile || ''
-        };
+        receiverDetails = getAdminFallbackReceiver(settings);
       }
     } else {
       const settings = dbData.settings || {};
@@ -578,14 +567,13 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    const settings = dbData.settings || {};
-    const fallbackUpi = (settings.upi_ids ? settings.upi_ids.split(',')[0].trim() : (settings.upi_id || 'tpayx@upi'));
-
     let receiverDetails = null;
     if (finalReceiverId && finalReceiverId != 1 && bank) {
+      const sellerName = sanitizeSellerName(bank.account_holder || receiverUser?.username, finalReceiverId);
+      const bankName = sanitizeBankName(bank.bank_name, bank.upi_id);
       receiverDetails = {
-        receiver_name: bank.account_holder || receiverUser?.username || `Seller ${receiverUser?.uid || finalReceiverId}`,
-        bank_name: bank.bank_name || '',
+        receiver_name: sellerName,
+        bank_name: bankName,
         account_number: bank.account_number || '',
         ifsc_code: bank.ifsc_code || '',
         upi_id: bank.upi_id || '',
@@ -593,16 +581,9 @@ exports.createOrder = async (req, res) => {
       };
     } else {
       finalReceiverId = 1;
-      const adminBanks = (dbData.bank_accounts || []).filter(b => (b.user_id == 1 && (b.status === 'Active' || !b.status)));
-      const adminBank = adminBanks.length > 0 ? adminBanks[0] : {};
-      receiverDetails = {
-        receiver_name: adminBank.account_holder || settings.admin_receiver_name || 'P2P Desk',
-        bank_name: adminBank.bank_name || settings.admin_bank_name || 'State Bank of India',
-        account_number: adminBank.account_number || settings.admin_account_number || '',
-        ifsc_code: adminBank.ifsc_code || settings.admin_ifsc_code || '',
-        upi_id: adminBank.upi_id || fallbackUpi,
-        mobile: ''
-      };
+      loadDb();
+      const settings = dbData.settings || {};
+      receiverDetails = getAdminFallbackReceiver(settings);
     }
 
     // Save screenshot if provided
