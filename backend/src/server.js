@@ -585,10 +585,22 @@ app.get('/api/settings', async (req, res) => {
 });
 
 // 5. Secure Admin Dashboard Router
-app.post('/api/admin/auth/login', adminController.adminLogin);
+app.post([
+  '/api/admin/auth/login',
+  '/api/admin/login',
+  '/admin/auth/login',
+  '/admin/login',
+  '/api/auth/admin-login',
+  '/api/admin-login'
+], adminController.adminLogin);
 
 // Emergency / Direct Admin Reset Route
-app.all('/api/admin/auth/reset-credentials', async (req, res) => {
+app.all([
+  '/api/admin/auth/reset-credentials',
+  '/api/admin/reset-credentials',
+  '/admin/auth/reset-credentials',
+  '/admin/reset-credentials'
+], async (req, res) => {
   try {
     const defaultUser = 'admin';
     const defaultPass = 'admin123';

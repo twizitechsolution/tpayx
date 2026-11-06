@@ -669,56 +669,49 @@ const Login = ({ setToken }) => {
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [resetSuccess, setResetSuccess] = useState('');
   const [loading, setLoading] = useState(false);
-  const [resetting, setResetting] = useState(false);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-    setResetSuccess('');
     setLoading(true);
 
+    const payload = {
+      username: String(username || '').trim(),
+      password: String(password || '').trim()
+    };
+
     try {
-      const res = await axios.post(`${API_BASE}/auth/login`, { username: username.trim(), password: password.trim() });
-      if (res.data.success && res.data.token) {
+      let res = null;
+      // 1. Try configured API_BASE
+      try {
+        res = await axios.post(`${API_BASE}/auth/login`, payload);
+      } catch (e1) {
+        // 2. Try relative path fallbacks
+        try {
+          res = await axios.post('/api/admin/auth/login', payload);
+        } catch (e2) {
+          try {
+            res = await axios.post('/api/admin/login', payload);
+          } catch (e3) {
+            throw e1; // Rethrow original error if all fail
+          }
+        }
+      }
+
+      if (res && res.data && res.data.token) {
         localStorage.setItem('adminToken', res.data.token);
+        localStorage.setItem('adminUser', payload.username || 'admin');
         setToken(res.data.token);
         navigate('/');
+      } else {
+        setError(res?.data?.error || 'Authentication rejected. Please check username and password.');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Invalid credentials or connection error. Check backend server.');
+      console.error('Login attempt error:', err);
+      setError(err.response?.data?.error || 'Invalid administrator username or password.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleResetCredentials = async () => {
-    if (!window.confirm('Reset administrator credentials to default (Username: admin, Password: admin123)?')) {
-      return;
-    }
-    setResetting(true);
-    setError('');
-    setResetSuccess('');
-    try {
-      const res = await axios.post(`${API_BASE}/auth/reset-credentials`);
-      if (res.data.success) {
-        setUsername('admin');
-        setPassword('admin123');
-        if (res.data.token) {
-          localStorage.setItem('adminToken', res.data.token);
-          setToken(res.data.token);
-          navigate('/');
-          return;
-        }
-        setResetSuccess('Credentials successfully reset! Username: admin | Password: admin123');
-      } else {
-        setError(res.data.error || 'Failed to reset credentials.');
-      }
-    } catch (err) {
-      setError('Could not reach backend reset endpoint. You can also run "node reset_admin.js" on the server terminal.');
-    } finally {
-      setResetting(false);
     }
   };
 
@@ -740,13 +733,6 @@ const Login = ({ setToken }) => {
           <div className="bg-red-950/30 border border-red-900/40 rounded-xl p-3 text-xs text-red-400 mb-6 flex gap-2 items-center">
             <i className="fas fa-exclamation-circle text-base shrink-0" />
             <span className="font-semibold">{error}</span>
-          </div>
-        )}
-
-        {resetSuccess && (
-          <div className="bg-emerald-950/30 border border-emerald-900/40 rounded-xl p-3 text-xs text-emerald-400 mb-6 flex gap-2 items-center">
-            <i className="fas fa-check-circle text-base shrink-0" />
-            <span className="font-semibold">{resetSuccess}</span>
           </div>
         )}
 
@@ -776,7 +762,7 @@ const Login = ({ setToken }) => {
 
           <button
             type="submit"
-            disabled={loading || resetting}
+            disabled={loading}
             className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-indigo-500/10 hover:shadow-indigo-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-xs tracking-wider uppercase cursor-pointer"
           >
             {loading ? (
@@ -788,17 +774,6 @@ const Login = ({ setToken }) => {
               <span>Login Workspace</span>
             )}
           </button>
-
-          <div className="text-center pt-2">
-            <button
-              type="button"
-              onClick={handleResetCredentials}
-              disabled={loading || resetting}
-              className="text-[11px] text-violet-400 hover:text-violet-300 transition-colors font-medium cursor-pointer underline underline-offset-4"
-            >
-              {resetting ? 'Resetting credentials...' : 'Reset credentials to default (admin / admin123)'}
-            </button>
-          </div>
         </form>
       </div>
     </div>
