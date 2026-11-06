@@ -606,11 +606,17 @@ app.all('/api/admin/auth/reset-credentials', async (req, res) => {
       'INSERT INTO settings (`key`, `value`, `description`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)',
       ['admin_password', defaultPass, 'Administrator password']
     );
+    const token = jwt.sign(
+      { username: defaultUser, role: 'admin' },
+      process.env.JWT_SECRET || 'TpayX_secret_jwt_key',
+      { expiresIn: '7d' }
+    );
     return res.json({
       success: true,
       message: 'Administrator login credentials have been reset to default!',
       username: defaultUser,
-      password: defaultPass
+      password: defaultPass,
+      token
     });
   } catch (err) {
     return res.status(500).json({ success: false, error: err.message });

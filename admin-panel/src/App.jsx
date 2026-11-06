@@ -705,6 +705,12 @@ const Login = ({ setToken }) => {
       if (res.data.success) {
         setUsername('admin');
         setPassword('admin123');
+        if (res.data.token) {
+          localStorage.setItem('adminToken', res.data.token);
+          setToken(res.data.token);
+          navigate('/');
+          return;
+        }
         setResetSuccess('Credentials successfully reset! Username: admin | Password: admin123');
       } else {
         setError(res.data.error || 'Failed to reset credentials.');
