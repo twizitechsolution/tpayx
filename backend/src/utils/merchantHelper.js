@@ -25,6 +25,8 @@ function getBankNameFromUpi(upiId) {
   if (handle.includes('oksbi') || handle.includes('sbi')) return 'State Bank of India';
   if (handle.includes('ybl') || handle.includes('ibl')) return 'YES Bank';
   if (handle.includes('paytm')) return 'Paytm Payments Bank';
+  if (handle.includes('airtel')) return 'Airtel Payments Bank';
+  if (handle.includes('ippb') || handle.includes('postbank')) return 'India Post Payments Bank';
   if (handle.includes('barodampay') || handle.includes('bob')) return 'Bank of Baroda';
   if (handle.includes('pnb')) return 'Punjab National Bank';
   if (handle.includes('cnrb') || handle.includes('canara')) return 'Canara Bank';
@@ -87,7 +89,13 @@ function getAdminFallbackReceiver(settings = {}, seed = null) {
     ? settings.admin_account_number
     : '50100' + Math.floor(100000000 + Math.random() * 900000000);
 
-  const ifsc = settings.admin_ifsc_code || (bankName === 'HDFC Bank' ? 'HDFC0000123' : (bankName === 'YES Bank' ? 'YESB0000001' : 'SBIN0001234'));
+  const ifsc = settings.admin_ifsc_code || (
+    bankName === 'HDFC Bank' ? 'HDFC0000123' :
+    bankName === 'Airtel Payments Bank' ? 'AIRP0000001' :
+    bankName === 'Paytm Payments Bank' ? 'PYTM0123456' :
+    bankName === 'YES Bank' ? 'YESB0000001' :
+    'SBIN0001234'
+  );
 
   return {
     receiver_name: sellerName,
